@@ -91,9 +91,11 @@ dependencies:
   # WebSocket for backend communication
   web_socket_channel: ^2.4.0
   sound_stream: ^0.4.2
-  flutter_webrtc: ^1.2.1
   flutter_ringtone_player: ^4.0.0+4
   audio_session: ^0.1.25
+  flutter_contacts: ^1.1.9+2
+  file_picker: ^10.3.10
+  dio: ^5.9.1
 
 dependency_overrides:
   vibration: ^3.0.0

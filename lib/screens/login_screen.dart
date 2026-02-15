@@ -1,8 +1,10 @@
-import 'package:flutter/foundation.dart'; // For kDebugMode
-import 'package:firebase_auth/firebase_auth.dart'; // For FirebaseAuth settings
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/mesh_gradient_background.dart';
+import '../widgets/glassmorphic_card.dart';
 import '../widgets/utelo_logo.dart';
 import '../widgets/country_code_picker.dart';
 import '../utils/app_colors.dart';
@@ -26,17 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
   String _countryCode = '+91';
   bool _isNewUser = false;
   bool _isLoading = false;
+  bool _agreedToTerms = false;
 
   @override
   void initState() {
     super.initState();
-    // Bypass Play Integrity/ReCaptcha on Emulators in Debug Mode
-    // Bypass Play Integrity/ReCaptcha on Emulators in Debug Mode
-    // COMMENTED OUT: We now have SHA keys, so we WANT Play Integrity to run.
-    /* if (kDebugMode) {
-        debugPrint('DEBUG MODE: Disabling app verification for testing');
-        FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: true);
-    } */
   }
 
   @override
@@ -44,120 +40,185 @@ class _LoginScreenState extends State<LoginScreen> {
     return Theme(
       data: Theme.of(context).copyWith(brightness: Brightness.light),
       child: Scaffold(
-        body: GradientBackground(
-        child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: MediaQuery.of(context).size.height,
-            child: SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 60),
-                  
-                  // Logo
-                  const UteloLogo(
-                    logoSize: 120,
-                    fontSize: 36,
-                    textColor: Colors.black87,
-                  ),
-                  
-                  const SizedBox(height: 60),
-                  
-                  // Enter mobile number text
-                  Text(
-                    'Enter your Mobile Number',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w500,
-                      shadows: [
-                        Shadow(
-                          color: Colors.white.withOpacity(0.5),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 30),
-                  
-                  // Phone number input with country code
-                  Form(
-                    key: _formKey,
-                    child: CountryCodePicker(
-                      initialCode: _countryCode,
-                      phoneController: _phoneController,
-                      onCodeChanged: (code) {
-                        _countryCode = code;
-                      },
-                      hintText: 'Mobile Number',
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your mobile number';
-                        }
-                        if (value.length < 10) {
-                          return 'Please enter a valid mobile number';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 30),
-                  
-                  // New user checkbox
-                  const SizedBox(height: 10),
-                  
-                  const SizedBox(height: 10),
-                  
-                  // Next button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _sendOTP,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.buttonColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 5,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(
-                              'Next',
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+        resizeToAvoidBottomInset: false,
+        body: MeshGradientBackground(
+          isDark: false, // Light Mode
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Glassmorphic Card (Blue Theme)
+                    GlassmorphicCard(
+                      blur: 20,
+                      opacity: 0.6,
+                      color: const Color(0xFFE3F2FD), // Light Blue Tint
+                      borderRadius: 30,
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Header
+                          Text(
+                            'CUSTOMER LOGIN',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 40),
+
+                          // Phone Input Area (Minimal)
+                          Container(
+                            child: Form(
+                              key: _formKey,
+                              child: CountryCodePicker(
+                                initialCode: _countryCode,
+                                phoneController: _phoneController,
+                                isMinimal: true,
+                                onCodeChanged: (code) {
+                                  _countryCode = code;
+                                },
+                                hintText: 'Mobile Number',
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) return 'Enter mobile number';
+                                  if (value.length < 10) return 'Invalid number';
+                                  return null;
+                                },
                               ),
                             ),
+                          ),
+                          
+                          const SizedBox(height: 30),
+                          
+                          // Terms & Conditions Checkbox
+                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: Checkbox(
+                                  value: _agreedToTerms,
+                                  activeColor: const Color(0xFF00C853),
+                                  onChanged: _isLoading ? null : (value) {
+                                    setState(() {
+                                      _agreedToTerms = value ?? false;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (!_isLoading) {
+                                      setState(() {
+                                        _agreedToTerms = !_agreedToTerms;
+                                      });
+                                    }
+                                  },
+                                  child: Text.rich(
+                                    TextSpan(
+                                      text: 'I agree to the ',
+                                      style: GoogleFonts.poppins(fontSize: 12, color: Colors.black87),
+                                      children: [
+                                        TextSpan(
+                                          text: 'Terms and Conditions',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w600,
+                                            decoration: TextDecoration.underline,
+                                            color: const Color(0xFF6C63FF),
+                                          ),
+                                          recognizer: TapGestureRecognizer()
+                                            ..onTap = _showTermsDialog,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          
+                          const SizedBox(height: 30),
+
+                          // Login Button (Green) - Disabled if T&C not checked
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: (_isLoading || !_agreedToTerms) ? null : _sendOTP,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00C853), // Green Button
+                                disabledBackgroundColor: Colors.grey.shade300,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: _agreedToTerms ? 5 : 0,
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20, width: 20,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : Text(
+                                      'LOGIN',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  
-                    ],
-                  ),
+                    
+                    const SizedBox(height: 30),
+                    
+                     // Footer Text
+                    Text(
+                      'Powered by UTELO',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.black38,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showTermsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Terms and Conditions', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Text(
+            'By using UTELO, you agree to our terms of service and privacy policy. We ensure your data is secure and used only for authentication purposes.\n\n(Full legal text would go here...)',
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close', style: GoogleFonts.poppins(color: Colors.black)),
+          ),
+        ],
       ),
     );
   }
@@ -172,7 +233,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await _localStorage.savePhoneNumber(phoneNumber);
 
-      // Safety timer to prevent infinite loading
       final safetyTimer = Future.delayed(const Duration(seconds: 70), () {
         if (mounted && _isLoading) {
           setState(() {
@@ -180,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Request timed out. Please check your internet connection and Firebase configuration.'),
+              content: Text('Request timed out. Please check internet.'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -190,9 +250,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         codeSent: (String verificationId, int? resendToken) {
-          // Cancel safety timer is not really possible with Future.delayed but 
-          // _isLoading check prevents side effects
-          
           if (mounted) {
             setState(() {
               _isLoading = false;
@@ -225,7 +282,6 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         },
         verificationCompleted: (credential) async {
-          // Auto-verification completed
           if (mounted) {
             setState(() {
               _isLoading = false;

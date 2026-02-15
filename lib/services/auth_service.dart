@@ -12,6 +12,9 @@ class AuthService {
   User? get currentUser => _auth.currentUser;
   String? get currentUserId => _auth.currentUser?.uid;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+  
+  Map<String, dynamic>? _cachedProfile; // Added
+  Map<String, dynamic>? get cachedProfile => _cachedProfile;
 
   // Phone Authentication
   Future<void> verifyPhoneNumber({
@@ -57,6 +60,9 @@ class AuthService {
       // Save user authentication state
       await _localStorage.saveAuthState(true);
       await _localStorage.saveUserId(userCredential.user!.uid);
+
+      // Ensure FCM token is saved immediately after login
+      await syncFcmToken();
       
       return userCredential;
     } catch (e) {
@@ -134,24 +140,48 @@ class AuthService {
       if (profilePicture != null) await _localStorage.saveProfilePicture(profilePicture);
       if (language != null) await _localStorage.saveLanguage(language);
       if (profileColor != null) await _localStorage.saveProfileColor(profileColor);
+      
+      // Update Cache
+      if (uid == currentUserId) {
+         _cachedProfile = {
+            'uid': uid,
+            'name': name ?? _cachedProfile?['name'],
+            'phoneNumber': phoneNumber ?? _cachedProfile?['phoneNumber'],
+            'profilePicture': profilePicture ?? _cachedProfile?['profilePicture'],
+            'bio': bio ?? _cachedProfile?['bio'],
+            'language': language ?? _cachedProfile?['language'],
+            'profileColor': profileColor ?? _cachedProfile?['profileColor'],
+         };
+      }
     } catch (e) {
-      debugPrint('Error creating/updating user profile: $e');
+      debugPrint('Error creating or updating user profile: $e');
       rethrow;
     }
   }
 
-  // Get User Profile
+  // Get User Profile with Caching
   Future<Map<String, dynamic>?> getUserProfile(String uid) async {
+    // If asking for current user and we have cache
+    if (uid == currentUserId && _cachedProfile != null) {
+      return _cachedProfile;
+    }
+
     try {
       final docSnapshot = await _firestore.collection('users').doc(uid).get();
-      return docSnapshot.data();
+      final data = docSnapshot.data();
+      
+      if (uid == currentUserId) {
+        _cachedProfile = data;
+      }
+      
+      return data;
     } catch (e) {
       debugPrint('Error getting user profile: $e');
       return null;
     }
   }
 
-  // Update User Profile (for edit profile screen)
+  // Update User Profile (name, profilePicture, profileColor)
   Future<void> updateUserProfile({
     required String userId,
     required String name,
@@ -263,6 +293,20 @@ class AuthService {
       }
     } catch (e) {
       debugPrint('Error updating FCM token: $e');
+    }
+  }
+
+  // Force-refresh and save the latest FCM token (safe to call anytime)
+  Future<void> syncFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        await updateFCMToken(token);
+      } else {
+        debugPrint('FCM token is null or empty (sync skipped)');
+      }
+    } catch (e) {
+      debugPrint('Error syncing FCM token: $e');
     }
   }
 

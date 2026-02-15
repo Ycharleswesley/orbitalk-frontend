@@ -6,8 +6,11 @@ import 'dart:async'; // Added
 import 'package:cloud_firestore/cloud_firestore.dart'; // Added
 import '../models/call_model.dart';
 import '../services/call_service.dart';
+import '../services/notification_service.dart';
+import '../services/local_storage_service.dart';
 import 'active_call_screen.dart';
 import '../utils/app_colors.dart';
+import '../widgets/mesh_gradient_background.dart'; // Added
 
 class OutgoingCallScreen extends StatefulWidget {
   final String callId;
@@ -31,10 +34,17 @@ class OutgoingCallScreen extends StatefulWidget {
 
 class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final CallService _callService = CallService();
+  final NotificationService _notificationService = NotificationService();
+  final LocalStorageService _localStorage = LocalStorageService();
   bool _isCancelling = false;
   late AnimationController _rippleController;
   Timer? _ringbackTimer; // Added
   bool _hasStartedRinging = false;
+  String? _receiverFcmToken;
+  String? _callerId;
+  String _callerName = 'User';
+  String _callerAvatar = '';
+  bool _missedNotified = false;
 
   @override
   void initState() {
@@ -56,6 +66,27 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
     
     // 2. Check if User is Offline
     _checkOfflineStatus();
+
+    _loadCallerInfo();
+  }
+
+  Future<void> _loadCallerInfo() async {
+    try {
+      final userId = await _localStorage.getUserId();
+      final userName = await _localStorage.getUserName();
+      if (userId != null) {
+        _callerId = userId;
+      }
+      if (userName != null && userName.isNotEmpty) {
+        _callerName = userName;
+      }
+      if (_callerId != null) {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(_callerId).get();
+        _callerAvatar = userDoc.data()?['profilePicture'] ?? '';
+      }
+    } catch (e) {
+      debugPrint('OutgoingCallScreen: Error loading caller info: $e');
+    }
   }
 
   Future<void> _checkOfflineStatus() async {
@@ -69,6 +100,8 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
            final isOnline = data?['isOnline'] ?? false;
            final fcmToken = data?['fcmToken'];
            final isLoggedOut = data?['isLoggedOut'] ?? false;
+
+           _receiverFcmToken = fcmToken?.toString();
            
            // CRITICAL: If explicitly Logged Out OR No Token => User is Not Reachable
            if (isLoggedOut == true || fcmToken == null || fcmToken.toString().isEmpty) {
@@ -129,6 +162,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
          FirebaseFirestore.instance.collection('calls').doc(widget.callId).update({
            'callStatus': 'missed' // Or 'failed'
          });
+         _sendMissedCallNotification();
          
          Navigator.of(context).pop();
          
@@ -148,12 +182,34 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
          FirebaseFirestore.instance.collection('calls').doc(widget.callId).update({
            'callStatus': 'missed'
          });
+         _sendMissedCallNotification();
          
          Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
            const SnackBar(content: Text('User is busy (No Answer)'), backgroundColor: Colors.orange),
         );
      }
+  }
+
+  Future<void> _sendMissedCallNotification() async {
+    if (_missedNotified) return;
+    _missedNotified = true;
+    if (_receiverFcmToken == null || _receiverFcmToken!.isEmpty) return;
+    if (_callerId == null || _callerId!.isEmpty) return;
+
+    try {
+      await _notificationService.sendCallNotification(
+        receiverId: widget.contactId,
+        callerId: _callerId!,
+        callerName: _callerName,
+        callId: widget.callId,
+        receiverToken: _receiverFcmToken,
+        callerAvatar: _callerAvatar,
+        type: 'missed_call',
+      );
+    } catch (e) {
+      debugPrint('OutgoingCallScreen: Missed call notification failed: $e');
+    }
   }
 
   Future<void> _startRingback() async {
@@ -182,16 +238,6 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _ringbackTimer?.cancel(); 
-    // Ensuring stop happens
-    FlutterRingtonePlayer().stop();
-    _rippleController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
@@ -199,25 +245,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
         return false;
       },
       child: Scaffold(
-        body: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(widget.contactId).snapshots(),
-          builder: (context, profileSnapshot) {
-            int liveColorId = widget.contactProfileColor;
-            if (profileSnapshot.hasData && profileSnapshot.data!.exists) {
-              liveColorId = (profileSnapshot.data!.data() as Map<String, dynamic>)['profileColor'] ?? liveColorId;
-            }
-
-            return Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: AppColors.getGradientColors(liveColorId),
-                ),
-              ),
-              child: SafeArea(
+        backgroundColor: Colors.transparent, // Transparent for Mesh
+        body: MeshGradientBackground(
+          child: SafeArea(
                 child: StreamBuilder<CallModel>(
                   stream: _callService.getCallStream(widget.callId),
                   builder: (context, snapshot) {
@@ -238,7 +268,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
                                    contactId: widget.contactId,
                                    contactName: widget.contactName,
                                    contactAvatar: widget.contactAvatar,
-                                   contactProfileColor: liveColorId,
+                                   contactProfileColor: widget.contactProfileColor,
                                    isOutgoing: true,
                                  ),
                                ),
@@ -248,8 +278,8 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
                       } else if (call.callStatus == CallStatus.ringing) {
                          // Start Ringback ONLY when confirmed 'ringing'
                          if (!_hasStartedRinging) {
-                              _hasStartedRinging = true;
-                              _startRingback();
+                               _hasStartedRinging = true;
+                               _startRingback();
                          }
                       } else if (call.callStatus == CallStatus.declined || 
                                  call.callStatus == CallStatus.ended ||
@@ -289,18 +319,31 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(height: 60),
+                        
+                        // RIPPLE AVATAR
                         _buildRippleAvatar(),
+                        
                         const SizedBox(height: 40),
+                        
                         Text(
                           widget.contactName,
                           style: GoogleFonts.poppins(
                             fontSize: 32,
                             fontWeight: FontWeight.w600,
                             color: Colors.white,
+                            shadows: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              )
+                            ]
                           ),
                           textAlign: TextAlign.center,
                         ),
+                        
                         const SizedBox(height: 16),
+                        
                         Text(
                           'Calling...',
                           style: GoogleFonts.poppins(
@@ -310,42 +353,40 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+                        
                         const Spacer(),
+                        
                         _buildCancelButton(),
+                        
                         const SizedBox(height: 80),
                       ],
                     );
                   },
                 ),
-              ),
-            );
-          },
+            ),
         ),
       ),
     );
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _ringbackTimer?.cancel(); 
+    // Ensuring stop happens
+    FlutterRingtonePlayer().stop();
+    _rippleController.dispose();
+    super.dispose();
+  }
+
   Widget _buildRippleAvatar() {
-    Widget avatarContent = widget.contactAvatar.isNotEmpty
-        ? ClipOval(
-            child: CachedNetworkImage(
-              imageUrl: widget.contactAvatar,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(color: Colors.white24),
-              errorWidget: (context, url, error) => _buildDefaultAvatar(),
-            ),
-          )
-        : _buildDefaultAvatar();
-
-    final bgColor = AppColors.getColor(widget.contactProfileColor);
-
     return SizedBox(
        width: 250,
        height: 250,
        child: CustomPaint(
           painter: RipplePainter(
              _rippleController,
-             color: bgColor, // Use Profile Color
+             color: AppColors.getColor(widget.contactProfileColor), 
           ),
           child: Center(
              child: Container(
@@ -362,11 +403,22 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> with SingleTick
                     ),
                  ],
                ),
-               child: ClipOval(child: avatarContent),
+               child: ClipOval(child: _buildAvatarContent()),
              ),
           ),
        ),
     );
+  }
+
+  Widget _buildAvatarContent() {
+    return widget.contactAvatar.isNotEmpty
+        ? CachedNetworkImage(
+              imageUrl: widget.contactAvatar,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(color: Colors.white24),
+              errorWidget: (context, url, error) => _buildDefaultAvatar(),
+            )
+        : _buildDefaultAvatar();
   }
 
   Widget _buildDefaultAvatar() {

@@ -13,8 +13,11 @@ class TranscriptService {
 
   final List<TranscriptModel> _transcripts = [];
 
-  // Get transcript stream for UI updates
-  Stream<List<TranscriptModel>> get transcriptStream => _transcriptController.stream;
+  // Get transcript stream for UI updates (replay latest on new listeners)
+  Stream<List<TranscriptModel>> get transcriptStream async* {
+    yield List.unmodifiable(_transcripts);
+    yield* _transcriptController.stream;
+  }
 
   // Get current transcripts
   List<TranscriptModel> get transcripts => List.unmodifiable(_transcripts);

@@ -8,6 +8,7 @@ class CountryCodePicker extends StatefulWidget {
   final String? Function(String?)? validator;
   final String hintText;
   final bool showFlag;
+  final bool isMinimal; // New parameter
 
   const CountryCodePicker({
     Key? key,
@@ -17,6 +18,7 @@ class CountryCodePicker extends StatefulWidget {
     this.validator,
     this.hintText = 'Mobile Number',
     this.showFlag = true,
+    this.isMinimal = false,
   }) : super(key: key);
 
   @override
@@ -217,6 +219,62 @@ class _CountryCodePickerState extends State<CountryCodePicker> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isMinimal) {
+      return Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Colors.black54, width: 1)),
+        ),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: _showCountryPicker,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                child: Row(
+                  children: [
+                    if (widget.showFlag)
+                      Text(
+                        _getFlagForCode(_selectedCode),
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                    if (widget.showFlag) const SizedBox(width: 8),
+                    Text(
+                      _selectedCode,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down, color: Colors.black54),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: TextFormField(
+                controller: widget.phoneController,
+                keyboardType: TextInputType.phone,
+                style: GoogleFonts.poppins(
+                  color: Colors.black87,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                decoration: InputDecoration(
+                  hintText: widget.hintText,
+                  hintStyle: GoogleFonts.poppins(color: Colors.black38),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                validator: widget.validator,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default Style (Existing)
     return Row(
       children: [
         // Country code dropdown button

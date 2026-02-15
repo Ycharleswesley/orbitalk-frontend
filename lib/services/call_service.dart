@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -6,7 +7,6 @@ import '../models/call_model.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'websocket_service.dart';
 import 'audio_processor_service.dart';
-import 'webrtc_service.dart';
 import 'transcript_service.dart';
 import 'notification_service.dart';
 import '../config/translation_config.dart';
@@ -25,13 +25,17 @@ class CallService {
   final NotificationService _notificationService = NotificationService();
   final WebSocketService _webSocketService = WebSocketService();
   final AudioProcessorService _audioProcessorService = AudioProcessorService();
-  final WebRTCService _webRTCService = WebRTCService();
   final TranscriptService _transcriptService = TranscriptService();
 
   bool _isCallActive = false;
+  bool _isUserMuted = false;
   StreamSubscription? _audioDataSubscription;
   StreamSubscription? _incomingCallSubscription;
   StreamSubscription? _callEndedSubscription;
+  Timer? _ttsUnmuteTimer;
+
+  // Track Local Service Init State (Audio/WS/etc)
+  final ValueNotifier<bool> isServicesInitialized = ValueNotifier(false);
 
   // Getters
   WebSocketService get webSocketService => _webSocketService;
@@ -365,52 +369,30 @@ class CallService {
 
       _showDebugToast('WS Connected! Starting Mic...');
 
-      // 3. Start WebRTC (Replacing AudioProcessor)
-      await _webRTCService.initialize(
-        roomId: callId,
-        remoteUserId: currentUserId == callerId ? receiverId : callerId
-      );
+      // 3. WebRTC removed — translation-only audio pipeline
 
-      // Listen for Signaling Messages (Offer/Answer/Candidate)
-      _webSocketService.signalingStream.listen((data) {
-         final type = data['type'];
-         final payload = data['payload']; // If nested, or directly 'sdp'?
-         // My Helper sends {type: signaling, payload: {...}}
-         // But wait, the stream returns the inner payload or outer?
-         // In WebSocketService: _signalingController.add(data);
-         // "data" is the parsed JSON of the message. 
-         // But the message structure is: {type: signaling, payload: {type: offer, sdp: ...}}
-         
-         if (payload != null) {
-            final sigType = payload['type'];
-            if (sigType == 'offer') {
-               _webRTCService.handleOffer(payload['sdp']);
-            } else if (sigType == 'answer') {
-               _webRTCService.handleAnswer(payload['sdp']);
-            } else if (sigType == 'candidate') {
-               _webRTCService.handleCandidate(payload['candidate']);
-            }
-         }
-      });
-
-      // If Caller -> Make Offer
-      if (currentUserId == callerId) {
-         await _webRTCService.makeCall();
-      }
-
-      // 4. Hybrid Mode: Start Audio Processor for Translation (Capture Only)
-      // This sends audio to Server for STT -> Translation -> Transcript
+      // 4. Hybrid Mode: Start Audio Processor for Translation (Capture + Playback for TTS)
       try {
         await _audioProcessorService.startCaptureOnly();
-      } catch (e) {
-        debugPrint('CallService: Hybrid Capture Failed (Mic Busy?): $e');
-      }
+        await _audioProcessorService.startPlayback();
 
-      // We do NOT listen to _audioDataSubscription for playback to avoid echo/conflict
-      // unless we want to hear the TTS. For now, let's prioritize TEXT translation.
+        _audioDataSubscription?.cancel();
+        _audioDataSubscription = _webSocketService.audioDataStream.listen((audioData) {
+          final pcmData = _stripWavHeader(audioData);
+          if (pcmData.isEmpty) return;
+
+          final durationMs = _estimateDurationMs(pcmData.length);
+          _temporarilyMuteForTts(durationMs);
+
+          _audioProcessorService.playAudio(pcmData);
+        });
+      } catch (e) {
+        debugPrint('CallService: Hybrid Capture/Playback Failed: $e');
+      }
 
       _transcriptService.clearTranscripts();
       _isCallActive = true;
+      isServicesInitialized.value = true; // Signal UI that we are READY
       _showDebugToast('WebRTC Active! Talking to ${theirLang}');
 
       // 5. Listen for Remote End Call Signal (Store subscription to cancel later)
@@ -444,19 +426,58 @@ class CallService {
     try {
       await _audioDataSubscription?.cancel();
       _audioDataSubscription = null;
+      _ttsUnmuteTimer?.cancel();
+      _ttsUnmuteTimer = null;
 
       await _callEndedSubscription?.cancel();
       _callEndedSubscription = null;
       
       await _audioProcessorService.stop(); // Ensure old service is off
-      await _webRTCService.dispose(); // WebRTC Dispose
+      await _webSocketService.disconnect();
+      
       await _webSocketService.disconnect();
       
       _isCallActive = false;
+      isServicesInitialized.value = false; // Reset
       debugPrint('CallService: Services stopped');
     } catch (e) {
       debugPrint('CallService: Error stopping services: $e');
     }
+  }
+
+  Uint8List _stripWavHeader(Uint8List data) {
+    // WAV header is 44 bytes and starts with "RIFF"
+    if (data.length > 44 &&
+        data[0] == 0x52 && // R
+        data[1] == 0x49 && // I
+        data[2] == 0x46 && // F
+        data[3] == 0x46) { // F
+      return Uint8List.sublistView(data, 44);
+    }
+    if (data.length <= 44 &&
+        data.length >= 4 &&
+        data[0] == 0x52 &&
+        data[1] == 0x49 &&
+        data[2] == 0x46 &&
+        data[3] == 0x46) {
+      return Uint8List(0);
+    }
+    return data;
+  }
+
+  int _estimateDurationMs(int pcmBytes) {
+    // 16kHz * 16-bit * mono = 32000 bytes/sec
+    return ((pcmBytes / 32000) * 1000).ceil();
+  }
+
+  void _temporarilyMuteForTts(int durationMs) {
+    if (_isUserMuted) return;
+    _audioProcessorService.toggleMute(true);
+    _ttsUnmuteTimer?.cancel();
+    _ttsUnmuteTimer = Timer(Duration(milliseconds: durationMs + 100), () {
+      if (_isUserMuted) return;
+      _audioProcessorService.toggleMute(false);
+    });
   }
 
   // Pre-connect WebSocket during ringing to eliminate start-up delay
@@ -613,9 +634,16 @@ class CallService {
       if (navigatorKey.currentContext != null) {
         ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
           SnackBar(
-            content: Text(message),
+            content: Text(
+              message,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
             duration: const Duration(seconds: 2),
-            backgroundColor: Colors.blueAccent,
+            backgroundColor: const Color(0xFF0141B5), // Theme Blue
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            behavior: SnackBarBehavior.fixed, // fixed = full width coverage
           ),
         );
       }
@@ -685,10 +713,10 @@ class CallService {
           try {
             final data = change.doc.data() as Map<String, dynamic>;
             
-            // FIX: Ghost Calls (Ignore old calls > 60s)
+            // FIX: Ghost Calls (Ignore old calls > 5 min)
             if (data['timestamp'] != null) {
                final ts = (data['timestamp'] as Timestamp).toDate();
-               if (DateTime.now().difference(ts).inSeconds > 60) {
+               if (DateTime.now().difference(ts).inSeconds > 300) {
                   debugPrint('CallService: Ignoring Ghost Call ${change.doc.id} (Age: ${DateTime.now().difference(ts).inSeconds}s)');
                   continue;
                }
@@ -706,8 +734,8 @@ class CallService {
                
                if (_isCallActive) continue; // Ignore if we are already in a call
 
-               // Mark this call as active immediately to prevent re-entry
-               setIncomingCallId(callData.callId);
+               // Don't set currentIncomingCallId yet; _handleIncomingCall will set it
+               // only when navigation actually happens. This avoids blocking the first UI push.
 
                _showDebugToast('INCOMING CALL: ${callData.callerName}');
                debugPrint('CallService: DETECTED INCOMING CALL: ${callData.callId} from ${callData.callerName}');
@@ -769,8 +797,8 @@ class CallService {
   Future<void> toggleMicrophone(bool mute) async {
     try {
       debugPrint('CallService: ${mute ? "Muting" : "Unmuting"} microphone');
-      // _audioProcessorService.toggleMute(mute);
-      _webRTCService.toggleMute(mute);
+      _isUserMuted = mute;
+      _audioProcessorService.toggleMute(mute);
     } catch (e) {
       debugPrint('CallService: Error toggling microphone: $e');
     }
@@ -779,15 +807,17 @@ class CallService {
   Future<void> toggleSpeaker(bool useSpeaker) async {
     try {
       debugPrint('CallService: Setting speaker enabled: $useSpeaker');
-      // _audioProcessorService.toggleSpeaker(useSpeaker);
-      _webRTCService.toggleSpeaker(useSpeaker);
+      await _audioProcessorService.toggleSpeaker(useSpeaker);
     } catch (e) {
       debugPrint('CallService: Error toggling speaker: $e');
     }
   }
 
   Stream<List<CallModel>> getCallHistory(String userId) {
-    return Stream.periodic(const Duration(seconds: 2)).asyncMap((_) async {
+    // Create a stream that emits immediately, then every 5 seconds
+    final controller = StreamController<List<CallModel>>();
+    
+    Future<void> fetch() async {
       try {
         final callerSnapshot = await _firestore.collection('calls').where('callerId', isEqualTo: userId).get();
         final receiverSnapshot = await _firestore.collection('calls').where('receiverId', isEqualTo: userId).get();
@@ -797,12 +827,27 @@ class CallService {
         for (var doc in receiverSnapshot.docs) allCalls.add(CallModel.fromMap(doc.data()));
         
         allCalls.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        return allCalls.take(50).toList(); // Limit to 50
+        if (!controller.isClosed) {
+          controller.add(allCalls.take(50).toList());
+        }
       } catch (e) {
         debugPrint('Error getting call history: $e');
-        return [];
+        if (!controller.isClosed) controller.add([]);
       }
-    });
+    }
+
+    // Initial fetch
+    fetch();
+    
+    // Periodic timer
+    final timer = Timer.periodic(const Duration(seconds: 5), (_) => fetch());
+    
+    controller.onCancel = () {
+      timer.cancel();
+      controller.close();
+    };
+    
+    return controller.stream;
   }
 
 

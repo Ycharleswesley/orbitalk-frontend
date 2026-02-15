@@ -10,7 +10,9 @@ import '../config/translation_config.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import '../services/audio_processor_service.dart'; // Added for debug stream
 
-import '../utils/app_colors.dart'; // Added
+import '../utils/app_colors.dart'; 
+import '../widgets/mesh_gradient_background.dart'; // Added
+import '../widgets/glassmorphic_card.dart'; // Added
 
 class ActiveCallScreen extends StatefulWidget {
   final String callId;
@@ -45,6 +47,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
   StreamSubscription<CallModel>? _callStatusSubscription;
   StreamSubscription<bool>? _connectionStatusSubscription;
   bool _isWebSocketConnected = false;
+  bool _remoteUserSpeaking = false; // Added missing variable
   final ScrollController _scrollController = ScrollController();
   late AnimationController _blinkController;
   late Animation<double> _blinkAnimation;
@@ -77,7 +80,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
     _rippleController = AnimationController(
        duration: const Duration(seconds: 2),
        vsync: this,
-    )..repeat();
+    );
   }
 
   void _listenToCallStatus() {
@@ -106,6 +109,15 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
           // If disconnected, show connecting state again
           if (!isConnected) {
              _isConnectionReady = false;
+          } else {
+             // FIX: If connected for > 3 seconds, force ready (Self-Repair)
+             // This fixes "Connecting..." being stuck if "Call Active" packet was missed.
+             Future.delayed(const Duration(seconds: 3), () {
+                if (mounted && _isWebSocketConnected && !_isConnectionReady) {
+                   debugPrint('ActiveCallScreen: WS Healthy but "Call Active" missed. Forcing Ready state.');
+                   _onCallActive();
+                }
+             });
           }
         });
       }
@@ -113,15 +125,57 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
 
     // Listen for System Messages (Ready Signal)
     _callService.webSocketService.systemMessageStream.listen((message) {
-      if (message['type'] == 'system' && message['status'] == 'call_active') {
-         _onCallActive();
+      if (message['type'] == 'system') {
+          if (message['status'] == 'call_active') {
+             _onCallActive();
+          } else if (message['status'] == 'speaking_start') {
+             _onRemoteSpeaking();
+          }
       }
     });
+
+    // NEW: listen for Transcripts to know when speech is DONE
+    _callService.transcriptService.transcriptStream.listen((transcripts) {
+       if (transcripts.isNotEmpty && _remoteUserSpeaking) {
+          // If a new transcript arrived, it means they finished that sentence.
+          if (mounted) {
+             setState(() {
+                _remoteUserSpeaking = false;
+                _rippleController.stop(); // Stop Pulse
+                _rippleController.reset();
+             });
+          }
+       }
+    });
+
+    // NEW: Listen for Local Services Ready
+    _callService.isServicesInitialized.addListener(_checkReadyState);
+  }
+
+  void _checkReadyState() {
+     if (_callService.webSocketService.isCallActive || _callService.isServicesInitialized.value) {
+        _onCallActive();
+     }
+  }
+
+  void _onRemoteSpeaking() {
+     if (mounted) {
+        setState(() {
+           _remoteUserSpeaking = true;
+           _rippleController.repeat(); // Start Pulse
+        });
+     }
   }
 
   void _onCallActive() {
+     // STRICT CHECK: Both Server AND Local Services must be ready
+     if (!_callService.isServicesInitialized.value) {
+        debugPrint('ActiveCallScreen: Server ready, but local services initializing. Waiting...');
+        return;
+     }
+
      if (mounted && !_isConnectionReady) {
-        debugPrint('ActiveCallScreen: Backend CALL START! Starting Timer Sync.');
+        debugPrint('ActiveCallScreen: Backend CALL START + Local Services READY! Starting Timer.');
         setState(() => _isConnectionReady = true);
         if (!_isTimerStarted) {
            _startTimer();
@@ -142,6 +196,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _callService.isServicesInitialized.removeListener(_checkReadyState);
     _blinkController.dispose();
     _rippleController.dispose();
     _callTimer?.cancel();
@@ -175,126 +230,111 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
         return false;
       },
       child: Scaffold(
-        body: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(widget.contactId).snapshots(),
-          builder: (context, snapshot) {
-            int liveColorId = widget.contactProfileColor;
-            if (snapshot.hasData && snapshot.data!.exists) {
-              liveColorId = (snapshot.data!.data() as Map<String, dynamic>)['profileColor'] ?? liveColorId;
-            }
-
-            return Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF02ABE3), // Ocean Blue Light
-                    Color(0xFF1B4BAB), // Ocean Blue Dark
-                  ],
-                ),
-              ),
-              child: SafeArea(
-                  child: Column(
-                    children: [
-                      _buildConnectionStatus(),
-                      
-                      const SizedBox(height: 10),
-                      
-                      // Flexible Top Section: Avatar + Name + Timer
-                      // Using Flexible instead of Fixed Expanded to adapt to screen size
-                      Flexible(
-                         flex: 3, 
-                         child: Center(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildContactAvatar(), 
-                                const SizedBox(height: 12),
-                                
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                                  child: Text(
-                                    widget.contactName,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 26, 
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+        backgroundColor: Colors.transparent, // Transparent for Mesh
+        body: MeshGradientBackground(
+          child: SafeArea(
+              child: Column(
+                children: [
+                  _buildConnectionStatus(),
+                  
+                  const SizedBox(height: 10),
+                  
+                  // Flexible Top Section: Avatar + Name + Timer
+                  Flexible(
+                     flex: 3, 
+                     child: Center(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildContactAvatar(), 
+                            const SizedBox(height: 12),
+                            
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: Text(
+                                widget.contactName,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 26, 
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  shadows: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.3),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    )
+                                  ]
                                 ),
-                                
-                                const SizedBox(height: 8),
-                                
-                                // Timer/Status
-                                if (_isEnding)
-                                   Text(
-                                      'Call Ended',
-                                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white70),
-                                   )
-                                else if (!_isConnectionReady)
-                                  Text(
-                                    'Connecting...',
-                                    style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white70),
-                                  )
-                                else
-                                   Text(
-                                    _formatTime(_secondsElapsed),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 24, 
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                      letterSpacing: 2.0,
-                                      shadows: [BoxShadow(blurRadius: 4, color: Colors.black26)]
-                                    ),
-                                  ),
-                                  
-                               if (!_isWebSocketConnected && !_isEnding)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text('Low Signal', style: GoogleFonts.poppins(fontSize: 12, color: Colors.amber)),
-                                ),
-                              ],
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                         ),
-                      ),
-                      
-                      // Transcript Area (Expanded to fill remaining space)
-                      Expanded(
-                          flex: 4,
-                          child: _buildTranscriptArea(),
-                      ),
-                      
-                      const SizedBox(height: 10),
-                      
-                      // Bottom Section: Controls
-                      SafeArea(
-                        top: false,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                               _buildCallControls(),
-                               const SizedBox(height: 16),
-                               _buildEndCallButton(),
-                            ],
-                          ),
+                            
+                            const SizedBox(height: 8),
+                            
+                            // Timer/Status
+                            if (_isEnding)
+                               Text(
+                                  'Call Ended',
+                                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white70),
+                               )
+                            else if (!_isConnectionReady)
+                               Text(
+                                'Connecting...',
+                                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white70),
+                              )
+                            else
+                               Text(
+                                _formatTime(_secondsElapsed),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 24, 
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  letterSpacing: 2.0,
+                                  shadows: [BoxShadow(blurRadius: 4, color: Colors.black26)]
+                                ),
+                              ),
+                              
+                           if (!_isWebSocketConnected && !_isEnding)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text('Low Signal', style: GoogleFonts.poppins(fontSize: 12, color: Colors.amber)),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                     ),
                   ),
+                  
+                  // Transcript Area (Expanded to fill remaining space)
+                  Expanded(
+                      flex: 4,
+                      child: _buildTranscriptArea(),
+                  ),
+                  
+                  const SizedBox(height: 10),
+                  
+                  // Bottom Section: Controls
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                           _buildCallControls(),
+                           const SizedBox(height: 16),
+                           _buildEndCallButton(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
+          ),
         ),
       ),
     );
@@ -612,45 +652,67 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
                ),
              ],
           ),
-          // ... (Rest of buildConnectionStatus is fine, leaving it but I need to close the bracket properly if I don't replace it all)
-          // Actually, let's just replace the whole function to be safe or use careful range.
-          // I will replace ONLY _handleEndCall and proceed to modify the build function logic below.
           
-          // Wait, I can't split this easily without more context.
-          // Let's replace _handleEndCall first.
-
-
           // Right Side: AI Status Indicator (Horizontal)
-          Row(
-            children: [
-              FadeTransition(
-                opacity: _isWebSocketConnected ? _blinkAnimation : const AlwaysStoppedAnimation(1.0),
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: _isWebSocketConnected ? Colors.greenAccent : Colors.redAccent,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                         color: (_isWebSocketConnected ? Colors.greenAccent : Colors.redAccent).withOpacity(0.6),
-                        blurRadius: 8,
-                        spreadRadius: 2,
+          Column(
+             crossAxisAlignment: CrossAxisAlignment.end,
+             children: [
+                Row(
+                  children: [
+                    FadeTransition(
+                      opacity: _isWebSocketConnected ? _blinkAnimation : const AlwaysStoppedAnimation(1.0),
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: _isWebSocketConnected ? Colors.greenAccent : Colors.redAccent,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                               color: (_isWebSocketConnected ? Colors.greenAccent : Colors.redAccent).withOpacity(0.6),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'AI Translator', 
+                      style: GoogleFonts.poppins(
+                        fontSize: 12, 
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white70
+                      )
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'AI Translator', 
-                style: GoogleFonts.poppins(
-                  fontSize: 12, 
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white70
+                const SizedBox(height: 4),
+                // Speak Status
+                Row(
+                   mainAxisSize: MainAxisSize.min,
+                   children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: _remoteUserSpeaking ? Colors.greenAccent : Colors.white24,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _remoteUserSpeaking ? 'Speaking' : 'Silent',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: _remoteUserSpeaking ? Colors.greenAccent : Colors.white54,
+                        ),
+                      ),
+                   ],
                 )
-              ),
-            ],
+             ],
           ),
         ],
       ),
@@ -661,16 +723,11 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
   Widget _buildTranscriptArea() {
     return Expanded(
       flex: 2,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
+      child: GlassmorphicCard(
+        borderRadius: 16,
+        opacity: 0.2, // Increased opacity to make it look "Whiter"
+        color: Colors.white, 
+        padding: const EdgeInsets.all(0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -681,7 +738,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: Colors.black87, // Darker text for white background
                 ),
               ),
             ),
@@ -698,7 +755,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
                         'Waiting for speech...',
                         style: GoogleFonts.poppins(
                           fontSize: 12,
-                          color: Colors.white60,
+                          color: Colors.black54, // Darker text
                         ),
                       ),
                     );
@@ -742,13 +799,14 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isLocal 
-            ? Colors.blue.withOpacity(0.15) 
-            : Colors.purple.withOpacity(0.15),
+            ? const Color(0xFF00E676).withOpacity(0.2) // Green Box for Local
+            : Colors.lightBlueAccent.withOpacity(0.15), 
+        
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isLocal 
-              ? Colors.blueAccent.withOpacity(0.4) 
-              : Colors.purpleAccent.withOpacity(0.4),
+              ? const Color(0xFF00E676).withOpacity(0.3)
+              : Colors.lightBlueAccent.withOpacity(0.4),
           width: 1.5,
         ),
       ),
@@ -761,7 +819,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
               Icon(
                 isLocal ? Icons.person : Icons.person_outline,
                 size: 16,
-                color: isLocal ? Colors.blueAccent : Colors.purpleAccent,
+                color: isLocal ? const Color(0xFF00E676) : Colors.lightBlueAccent,
               ),
               const SizedBox(width: 6),
               Text(
@@ -769,7 +827,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: isLocal ? Colors.blueAccent : Colors.purpleAccent,
+                  color: isLocal ? const Color(0xFF00E676) : Colors.lightBlueAccent,
                 ),
               ),
             ],
@@ -782,7 +840,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
               transcript.originalText,
               style: GoogleFonts.poppins(
                 fontSize: 16,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.black87, // Darker text for readability
                 height: 1.4,
               ),
             ),
@@ -792,7 +850,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Divider(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.black12,
                 thickness: 1,
               ),
             ),
@@ -802,17 +860,10 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProvider
             Text(
               transcript.translatedText,
               style: GoogleFonts.poppins(
-                fontSize: 20, // Clearly Bigger
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF00E676), // Bright Green
+                fontSize: 20, 
+                fontWeight: FontWeight.w500, // Removed Bold
+                color: Colors.black, 
                 height: 1.3,
-                shadows: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.8),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
             ),
         ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/mesh_gradient_background.dart'; // Updated
+import '../widgets/glassmorphic_card.dart'; // Updated
 import '../widgets/utelo_logo.dart';
 import '../utils/app_colors.dart';
 import '../services/auth_service.dart';
@@ -31,189 +32,181 @@ class _SignupScreenState extends State<SignupScreen> {
     return Theme(
       data: Theme.of(context).copyWith(brightness: Brightness.light),
       child: Scaffold(
-        body: GradientBackground(
-        child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: MediaQuery.of(context).size.height,
-            child: SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
+        resizeToAvoidBottomInset: false,
+        body: MeshGradientBackground(
+          isDark: false, // Light Mode
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: GlassmorphicCard(
+                  blur: 20,
+                  opacity: 0.6,
+                  color: const Color(0xFFE3F2FD), // Light Blue Tint
+                  borderRadius: 30,
+                  padding: const EdgeInsets.all(32),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const SizedBox(height: 60),
-                  
-                  // Logo
-                  const UteloLogo(
-                    logoSize: 100,
-                    fontSize: 32,
-                    textColor: Colors.black87,
-                  ),
-                  
-                  const SizedBox(height: 60),
-                  
-                  // Enter name text
-                  Text(
-                    'Enter your Name',
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w500,
-                      shadows: [
-                        Shadow(
-                          color: Colors.white.withOpacity(0.5),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Name input
-                  Form(
-                    key: _formKey,
-                    child: TextFormField(
-                      controller: _nameController,
-                      keyboardType: TextInputType.name,
-                      style: GoogleFonts.poppins(
-                        color: Colors.black87,
-                        fontSize: 16,
+                      // Logo
+                      const UteloLogo(
+                        logoSize: 100,
+                        fontSize: 28,
+                        textColor: Colors.black87,
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Full Name',
-                        hintStyle: GoogleFonts.poppins(
-                          color: Colors.grey.shade600,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.person_outline,
-                          color: Colors.grey.shade700,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.9),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color: Colors.grey.shade300,
-                            width: 2,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color: Colors.purple.shade600,
-                            width: 2,
-                          ),
-                        ),
-                        errorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color: Colors.red.shade300,
-                            width: 2,
-                          ),
-                        ),
-                        focusedErrorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color: Colors.red.shade300,
-                            width: 2,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your name';
-                        }
-                        if (value.length < 3) {
-                          return 'Name must be at least 3 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Next button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _continueToLanguageSelection,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.buttonColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 5,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(
-                              'Next',
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Already have an account
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    child: RichText(
-                      text: TextSpan(
+                      
+                      const SizedBox(height: 40),
+                      
+                      // Enter name text
+                      Text(
+                        'Enter your Name',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 18,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
                         ),
-                        children: [
-                          TextSpan(
-                            text: 'Already have an account? ',
-                            style: TextStyle(
-                              color: Colors.black.withOpacity(0.7),
-                            ),
-                          ),
-                          TextSpan(
-                            text: 'Sign In',
-                            style: TextStyle(
-                              color: Colors.purple.shade700,
-                              fontWeight: FontWeight.w600,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ],
                       ),
-                    ),
-                  ),
+                      
+                      const SizedBox(height: 30),
+                      
+                      // Name input
+                      Form(
+                        key: _formKey,
+                        child: TextFormField(
+                          controller: _nameController,
+                          keyboardType: TextInputType.name,
+                          style: GoogleFonts.poppins(
+                            color: Colors.black87,
+                            fontSize: 16,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Full Name',
+                            hintStyle: GoogleFonts.poppins(
+                              color: Colors.black45,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.person_outline,
+                              color: Colors.black54,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.5),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade400,
+                                width: 1,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(
+                                color: const Color(0xFF00C853),
+                                width: 2,
+                              ),
+                            ),
+                            errorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(
+                                color: Colors.red.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            focusedErrorBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(
+                                color: Colors.red.shade300,
+                                width: 2,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 16,
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your name';
+                            }
+                            if (value.length < 3) {
+                              return 'Name must be at least 3 characters';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 40),
+                      
+                      // Next button (Green)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _continueToLanguageSelection,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00C853), // Green Button
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 5,
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  'Next',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // Already have an account
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: RichText(
+                          text: TextSpan(
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: 'Already have an account? ',
+                                style: TextStyle(
+                                  color: Colors.black54,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'Sign In',
+                                style: TextStyle(
+                                  color: const Color(0xFF00C853), // Green Link
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );

@@ -6,10 +6,15 @@ import 'package:intl/intl.dart';
 import '../models/call_model.dart';
 import '../services/call_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/auth_service.dart'; // Added
 import '../widgets/country_code_picker.dart';
 import '../utils/app_colors.dart'; // Unified
 import 'outgoing_call_screen.dart';
 import 'profile_view_screen.dart';
+import '../widgets/curved_header.dart';
+import '../widgets/user_avatar.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/skeletons.dart'; // Added Import
 
 class CallsScreen extends StatefulWidget {
   const CallsScreen({Key? key}) : super(key: key);
@@ -18,7 +23,7 @@ class CallsScreen extends StatefulWidget {
   State<CallsScreen> createState() => CallsScreenState();
 }
 
-class CallsScreenState extends State<CallsScreen> {
+class CallsScreenState extends State<CallsScreen> with AutomaticKeepAliveClientMixin {
   final CallService _callService = CallService();
   final LocalStorageService _localStorage = LocalStorageService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -28,13 +33,21 @@ class CallsScreenState extends State<CallsScreen> {
   bool _isSearching = false;
 
   @override
+  bool get wantKeepAlive => true; // Keep state alive
+
+  @override
   void initState() {
     super.initState();
     _loadCurrentUser();
   }
 
   Future<void> _loadCurrentUser() async {
-    final userId = await _localStorage.getUserId();
+    // Priority 1: Firebase Auth (Sync)
+    String? userId = AuthService().currentUserId;
+    
+    // Priority 2: Local Storage (Async Fallback)
+    userId ??= await _localStorage.getUserId();
+
     if (mounted) {
       setState(() {
         _currentUserId = userId;
@@ -47,28 +60,55 @@ class CallsScreenState extends State<CallsScreen> {
   void showNewCallDialog() {
     final phoneController = TextEditingController();
     String fullPhoneNumber = '+91';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           title: Text(
             'New Call',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 'Enter phone number to make a call',
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: isDark ? Colors.grey.shade300 : Colors.black54,
+                ),
               ),
               const SizedBox(height: 16),
-              PhoneInputWithCountryCode(
-                phoneController: phoneController,
-                onFullNumberChanged: (newFullNumber) {
-                  fullPhoneNumber = newFullNumber;
-                },
+              Theme(
+                data: Theme.of(context).copyWith(
+                  inputDecorationTheme: InputDecorationTheme(
+                     filled: true,
+                     fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                     hintStyle: TextStyle(color: isDark ? Colors.grey : Colors.grey.shade600),
+                     border: OutlineInputBorder(
+                        borderSide: BorderSide(color: isDark ? const Color(0xFF444444) : Colors.grey),
+                     ),
+                     enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: isDark ? const Color(0xFF444444) : Colors.grey),
+                     ),
+                  ),
+                  textTheme: TextTheme(
+                     bodyLarge: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                     bodyMedium: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  ),
+                ),
+                child: PhoneInputWithCountryCode(
+                  phoneController: phoneController,
+                  onFullNumberChanged: (newFullNumber) {
+                    fullPhoneNumber = newFullNumber;
+                  },
+                ),
               ),
             ],
           ),
@@ -97,7 +137,8 @@ class CallsScreenState extends State<CallsScreen> {
                 await _searchAndCall(numberToUse);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFB64166),
+                backgroundColor: const Color(0xFF0141B5), // Theme Blue
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               child: Text(
                 'Call',
@@ -241,206 +282,165 @@ class CallsScreenState extends State<CallsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // IMPORTANT
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeColor = isDark ? const Color(0xFF0141B5) : const Color(0xFF001133);
     
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey.shade50,
-      appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-        elevation: 1,
-        shadowColor: Colors.black.withOpacity(0.1),
-        title: _isSearching
-            ? TextField(
-                autofocus: true,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                decoration: InputDecoration(
-                  hintText: 'Search calls...',
-                  hintStyle: GoogleFonts.poppins(
-                    color: Colors.grey.shade600,
-                  ),
-                  border: InputBorder.none,
-                ),
-              )
-            : Text(
-                'Calls',
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isSearching ? Icons.close : Icons.search,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchQuery = '';
-                }
-              });
-            },
-          ),
-        ],
-      ),
-      body: _currentUserId == null
-          ? const Center(child: CircularProgressIndicator())
-          : StreamBuilder<List<CallModel>>(
-              stream: _callService.getCallHistory(_currentUserId!),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+      backgroundColor: Colors.transparent, // Transparent to show MainScreen Mesh
+      body: Stack(
+        children: [
+          // Calls List / Content
+          ClipRect(
+            child: _currentUserId == null
+                ? ChatListSkeleton(isDark: isDark)
+                : StreamBuilder<List<CallModel>>(
+                  stream: _callService.getCallHistory(_currentUserId!),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                        return ChatListSkeleton(isDark: isDark);
+                    }
+                    if (snapshot.hasError) {
+                       return Center(child: Text('Error loading calls'));
+                    }
+                    
 
-                if (snapshot.hasError) {
-                  debugPrint('CallsScreen: Error loading call history: ${snapshot.error}');
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 60,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Error loading call history',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
 
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.call_outlined,
-                          size: 100,
-                          color: Colors.grey.shade300,
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'No recent calls',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Your call history will appear here',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+// ...
 
-                final allCalls = snapshot.data!;
-                
-                // Filter calls based on search query
-                final calls = _searchQuery.isEmpty
-                    ? allCalls
-                    : allCalls.where((call) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return EmptyStateWidget(
+                          isDark: isDark,
+                          icon: Icons.phone_callback_rounded,
+                          title: 'No Calls Yet',
+                          subtitle: 'Connect with your loved ones instantly with clear voice calls.',
+                          quote: 'A simple hello can change someone\'s day.',
+                          buttonText: 'Start Call',
+                          onButtonPressed: () {
+                             showNewCallDialog();
+                          },
+                        );
+                    }
+
+                    final allCalls = snapshot.data!;
+                    final calls = _searchQuery.isEmpty ? allCalls : allCalls.where((c) {
+                        final name = c.receiverId == _currentUserId ? c.callerName : c.receiverName;
+                        return (name ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
+                    }).toList();
+
+                    return ListView.builder(
+                       // Matches ContactsScreen
+                      padding: const EdgeInsets.only(top: 240, bottom: 120),
+                      itemCount: calls.length,
+                      itemBuilder: (context, index) {
+                        final call = calls[index];
                         final isIncoming = call.receiverId == _currentUserId;
-                        final contactName = isIncoming 
-                            ? (call.callerName ?? 'Unknown') 
-                            : (call.receiverName ?? 'Unknown');
-                        return contactName.toLowerCase().contains(_searchQuery.toLowerCase());
-                      }).toList();
-                
-                if (calls.isEmpty && _searchQuery.isNotEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_off,
-                          size: 60,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No calls found',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+                        final isViewed = isIncoming ? call.receiverViewed : call.callerViewed;
+                        final contactId = isIncoming ? call.callerId : call.receiverId;
+                        final contactName = isIncoming ? (call.callerName ?? 'Unknown') : (call.receiverName ?? 'Unknown');
+                        final contactAvatar = isIncoming ? (call.callerAvatar ?? '') : (call.receiverAvatar ?? '');
+                        final contactColorId = isIncoming ? call.callerProfileColor : call.receiverProfileColor;
 
-                debugPrint('CallsScreen: Displaying ${calls.length} calls');
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Recents',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white : Colors.black87,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        itemCount: calls.length,
-                        itemBuilder: (context, index) {
-                          if (index >= calls.length) {
-                            return const SizedBox.shrink();
-                          }
-                          
-                          final call = calls[index];
-                          final isIncoming = call.receiverId == _currentUserId;
-                          final contactId = isIncoming ? call.callerId : call.receiverId;
-                          final contactName = isIncoming ? (call.callerName ?? 'Unknown') : (call.receiverName ?? 'Unknown');
-                          final contactAvatar = isIncoming ? (call.callerAvatar ?? '') : (call.receiverAvatar ?? '');
-                          final contactColorId = isIncoming ? call.callerProfileColor : call.receiverProfileColor; // Get Color ID
-
-                          return _buildCallItem(
+                        return _buildCallItem(
                             context,
                             call,
                             contactId,
                             contactName,
                             contactAvatar,
-                            contactColorId, // Pass Color ID
+                            contactColorId,
                             isIncoming,
                             isDark,
                           );
-                        },
+                      },
+                    );
+                  }
+              ),
+          ),
+          
+          // Header (Top Layer)
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: CurvedHeader(
+              showBack: false,
+              titleWidget: SizedBox(
+                height: 32,
+                child: Row(
+                  children: [
+                    const Icon(Icons.call, color: Colors.white, size: 24),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Voice Call',
+                      style: GoogleFonts.poppins(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
+                    if (_currentUserId != null)
+                     Padding(
+                       padding: const EdgeInsets.only(left: 8, top: 4),
+                       child: Text(
+                        'ID: ...${_currentUserId!.substring(_currentUserId!.length - 4)}',
+                        style: GoogleFonts.poppins(fontSize: 10, color: Colors.white70),
+                       ),
+                     ),
                   ],
-                );
-              },
-            ),
+                ),
+              ),
+              bottomChild: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                 Container(
+                    height: 40,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: TextField(
+                      autofocus: false,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        hintText: 'Search',
+                        prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), // Adjusted vertical padding for centering
+                        suffixIcon: _searchQuery.isNotEmpty 
+                           ? IconButton(
+                              icon: const Icon(Icons.close, color: Colors.grey, size: 18),
+                              onPressed: () {
+                                 setState(() {
+                                   _searchQuery = '';
+                                 });
+                              },
+                           )
+                           : null
+                      ),
+                    ),
+                 ),
+                 
+                 // Recents Title INSIDE Header
+
+                   Padding(
+                     padding: const EdgeInsets.only(top: 4, bottom: 2, left: 4),
+                     child: Text(
+                        'Recents',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white, // White to match header text
+                        ),
+                     ),
+                   ),
+               ],
+             ),
+             actions: [],
+          ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -456,6 +456,9 @@ class CallsScreenState extends State<CallsScreen> {
   ) {
     IconData callIcon;
     Color iconColor;
+    
+    // Dynamic Theme Color for Icons
+    final themeColor = isDark ? const Color(0xFF0141B5) : const Color(0xFF001133);
 
     final isMissed = call.callStatus == CallStatus.missed || 
                      (call.callStatus == CallStatus.cancelled && isIncoming);
@@ -471,90 +474,50 @@ class CallsScreenState extends State<CallsScreen> {
       iconColor = Colors.red; // Red to indicate failure/rejection
     } else if (isIncoming) {
       callIcon = Icons.call_received;
-      iconColor = Colors.green;
+      iconColor = Colors.green; // Incoming = Green
     } else {
       callIcon = Icons.call_made;
-      iconColor = Colors.blue;
+      iconColor = const Color(0xFF0141B5); // Outgoing = Blue
     }
-
     final isViewed = isIncoming ? call.receiverViewed : call.callerViewed;
-
-
     return ListTile(
       leading: GestureDetector(
         onTap: () {
            _viewProfile(context, contactId);
         },
-        child: _buildAvatar(contactName, contactAvatar, contactColorId), // Pass Color ID
+        child: UserAvatar(
+            name: contactName,
+            profilePicture: contactAvatar,
+            size: 50,
+            colorId: contactColorId,
+        ),
       ),
       title: Text(
         contactName,
         style: GoogleFonts.poppins(
           fontSize: 16,
-          fontWeight: (isMissed && !isViewed) ? FontWeight.bold : FontWeight.normal, 
-          // Red if Missed (Unviewed) OR Declined (Failure). Otherwise Theme color.
-          color: ((isMissed && !isViewed) || isDeclined) ? Colors.red : (isDark ? Colors.white : Colors.black87),
+          fontWeight: (isMissed && !isViewed) ? FontWeight.bold : FontWeight.w500,
+          color: isDark ? Colors.white : Colors.black87,
         ),
       ),
-      subtitle: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(contactId).snapshots(),
-        builder: (context, snapshot) {
-          bool isLoggedOut = false;
-          if (snapshot.hasData && snapshot.data!.exists) {
-            isLoggedOut = (snapshot.data!.data() as Map<String, dynamic>)['isLoggedOut'] ?? false;
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    callIcon,
-                    size: 14,
-                    color: iconColor,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatCallTime(call.timestamp),
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: (!isViewed) ? FontWeight.w600 : FontWeight.normal,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-              if (isLoggedOut)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(
-                    children: [
-                      const Text('🚫', style: TextStyle(fontSize: 10)),
-                      const SizedBox(width: 4),
-                      Text(
-                        'User not logged in',
-                        style: GoogleFonts.poppins(
-                          fontSize: 10,
-                          color: Colors.orange.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          );
-        }
+      subtitle: Row(
+        children: [
+          Icon(callIcon, size: 14, color: iconColor),
+          const SizedBox(width: 4),
+          Text(
+            _formatCallTime(call.timestamp),
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              fontWeight: (isMissed && !isViewed) ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
       trailing: IconButton(
-        icon: const Icon(
-            Icons.call,
-            color: Colors.green, 
-          ),
+        icon: const Icon(Icons.call, color: Colors.green),
         onPressed: () {
-          _markAsViewed(call);
-          _initiateCallToContact(contactId, contactName, contactAvatar, contactColorId); // Pass color
+          _initiateCallToContact(contactId, contactName, contactAvatar, contactColorId); 
         },
       ),
       onTap: () {
@@ -585,50 +548,7 @@ class CallsScreenState extends State<CallsScreen> {
     );
   }
 
-  Widget _buildAvatar(String name, String? profilePicture, int colorId) {
-    final bgColor = AppColors.getColor(colorId);
-    
-    if (profilePicture != null && profilePicture.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: profilePicture,
-          width: 50,
-          height: 50,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => CircleAvatar(
-            radius: 25,
-            backgroundColor: Colors.grey.shade300,
-            child: const Icon(Icons.person, color: Colors.white),
-          ),
-          errorWidget: (context, url, error) => CircleAvatar(
-            radius: 25,
-            backgroundColor: bgColor,
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    
-    return CircleAvatar(
-      radius: 25,
-      backgroundColor: bgColor,
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : '?',
-        style: GoogleFonts.poppins(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
+  // _buildAvatar REMOVED
 
   String _formatCallTime(DateTime timestamp) {
     final now = DateTime.now();

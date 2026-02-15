@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../services/local_storage_service.dart';
 import '../utils/app_colors.dart';
+import '../widgets/curved_header.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -150,7 +151,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.purple.shade200, width: 3),
+              border: Border.all(color: Colors.white, width: 3),
             ),
             child: ClipOval(
               child: _selectedImage != null
@@ -164,21 +165,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return Container(
-                              color: Colors.purple.shade100,
-                              child: Icon(
+                              color: Colors.white.withOpacity(0.2),
+                              child: const Icon(
                                 Icons.person,
                                 size: 60,
-                                color: Colors.purple.shade300,
+                                color: Colors.white,
                               ),
                             );
                           },
                         )
                       : Container(
-                          color: Colors.purple.shade100,
-                          child: Icon(
+                          color: Colors.white.withOpacity(0.2),
+                          child: const Icon(
                             Icons.person,
                             size: 60,
-                            color: Colors.purple.shade300,
+                            color: Colors.white,
                           ),
                         ),
             ),
@@ -191,7 +192,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.purple.shade600,
+                  color: const Color(0xFF001133), // Deep Blue
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
@@ -269,137 +270,143 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF0D0D0D) : Colors.grey.shade50;
     
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // Dynamic
-
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).cardColor,
-        elevation: 1,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Edit Profile',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).textTheme.bodyLarge?.color,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 20),
-              
-              // Profile Picture
-              _buildProfileImage(),
-              
-              const SizedBox(height: 12),
-              
-              Center(
+      backgroundColor: bgColor, 
+      body: Stack(
+        children: [
+          // Content
+          ClipRect(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 260, 24, 24), // Push content down
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 20),
+                  
+                  // Profile Picture
+                  _buildProfileImage(),
+                  
+                  const SizedBox(height: 12),
+                  
+                  Center(
                 child: TextButton.icon(
                   onPressed: _pickImage,
-                  icon: const Icon(Icons.edit, size: 18),
+                  icon: Icon(Icons.edit, size: 18, color: isDark ? Colors.blue : const Color(0xFF001133)),
                   label: Text(
                     'Change Photo',
-                    style: GoogleFonts.poppins(fontSize: 14),
+                    style: GoogleFonts.poppins(fontSize: 14, color: isDark ? Colors.blue : const Color(0xFF001133)),
                   ),
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.purple.shade600,
+                    foregroundColor: isDark ? Colors.blue : const Color(0xFF001133),
                   ),
                 ),
               ),
-              
-              const SizedBox(height: 32),
-              
-              // Name Field
-              Text(
-                'Name',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _nameController,
-                style: GoogleFonts.poppins(
-                   fontSize: 15,
-                   color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Enter your name',
-                  hintStyle: TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: Theme.of(context).cardColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.purple.shade600, width: 2),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 32),
-              
-              // COLOR PICKER
-              _buildColorPicker(),
-              
-              const SizedBox(height: 40),
-              
-              // Save Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple.shade600,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  
+                  const SizedBox(height: 32),
+                  
+                  // Name Field
+                  Text(
+                    'Name',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
-                    elevation: 2,
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          'Save Changes',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _nameController,
+                    style: GoogleFonts.poppins(
+                       fontSize: 15,
+                       color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Enter your name',
+                      hintStyle: const TextStyle(color: Colors.grey),
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.purple.shade600, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  
+                  // COLOR PICKER
+                  _buildColorPicker(),
+                  
+                  const SizedBox(height: 40),
+                  
+                  // Save Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _saveProfile,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isDark ? const Color(0xFF0141B5) : const Color(0xFF001133),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 2,
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text(
+                              'Save Changes',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Header
+         Positioned(
+            top: 0, left: 0, right: 0,
+            child: CurvedHeader(
+              showBack: true,
+              onBackPressed: () => Navigator.pop(context),
+              titleWidget: Text(
+                'Edit Profile',
+                style: GoogleFonts.poppins(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -4,6 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/call_model.dart';
+import '../widgets/mesh_gradient_background.dart';
+import '../widgets/user_avatar.dart';
 import '../services/call_service.dart';
 import '../services/local_storage_service.dart';
 import 'image_viewer_screen.dart';
@@ -83,11 +85,10 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
   Widget _buildProfileImage() {
     final profilePicture = _userData?['profilePicture'] ?? widget.contactAvatar;
+    final name = _userData?['name'] ?? widget.contactName ?? 'User';
 
     return Center(
       child: Container(
-        width: 150,
-        height: 150,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 4),
@@ -99,7 +100,11 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
             ),
           ],
         ),
-        child: GestureDetector(
+        child: UserAvatar(
+          name: name,
+          profilePicture: profilePicture,
+          size: 150,
+          isOnline: _userData?['isOnline'] ?? false,
           onTap: () {
             if (profilePicture != null && profilePicture.isNotEmpty) {
               Navigator.push(
@@ -107,43 +112,12 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                 MaterialPageRoute(
                   builder: (context) => ImageViewerScreen(
                     imageUrl: profilePicture,
-                    preventScreenshots: true, // Enable screenshot prevention for profile images
+                    preventScreenshots: true,
                   ),
                 ),
               );
             }
           },
-          child: ClipOval(
-            child: profilePicture != null && profilePicture.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: profilePicture,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Colors.purple.shade100,
-                      child: Icon(
-                        Icons.person,
-                        size: 60,
-                        color: Colors.purple.shade300,
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.purple.shade100,
-                      child: Icon(
-                        Icons.person,
-                        size: 60,
-                        color: Colors.purple.shade300,
-                      ),
-                    ),
-                  )
-                : Container(
-                    color: Colors.purple.shade100,
-                    child: Icon(
-                      Icons.person,
-                      size: 60,
-                      color: Colors.purple.shade300,
-                    ),
-                  ),
-          ),
         ),
       ),
     );
@@ -232,19 +206,18 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
               // Phone section
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.05),
-                      blurRadius: 8,
+                      blurRadius: 10,
                       offset: const Offset(0, 2),
                     ),
                   ],
                 ),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -252,7 +225,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                       'Phone',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
-                        color: Colors.grey.shade600,
+                        color: isDark ? Colors.white70 : Colors.black54,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -269,44 +242,34 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                             ),
                           ),
                         ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.call,
-                        color: Colors.green,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        // TODO: Implement call functionality
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Calling $name')),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.message,
-                        color: Colors.blue,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        // Navigate to chat screen
-                         Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatDetailScreen(
-                              contactName: _userData?['name'] ?? widget.contactName ?? 'User',
-                              contactAvatar: _userData?['profilePicture'] ?? widget.contactAvatar ?? '',
-                              contactId: widget.userId,
-                            ),
-                          ),
-                        );
-                      },
+                        IconButton(
+                          icon: const Icon(Icons.call, color: Colors.green, size: 20),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Calling $name')),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.message, color: Colors.blue, size: 20),
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChatDetailScreen(
+                                  contactName: _userData?['name'] ?? widget.contactName ?? 'User',
+                                  contactAvatar: _userData?['profilePicture'] ?? widget.contactAvatar ?? '',
+                                  contactId: widget.userId,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
         ],
           ],
         );
@@ -318,10 +281,10 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey.shade50,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-        elevation: 1,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : Colors.black87),
           onPressed: () => Navigator.pop(context),
@@ -359,7 +322,10 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: MeshGradientBackground(
+        isDark: isDark,
+        child: SafeArea(
+          child: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(widget.userId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && _userData == null) {
@@ -397,58 +363,48 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
             );
         },
       ),
+    ),
+    ),
     );
   }
   
   Widget _buildCallHistory(bool isDark) {
     if (_callHistory.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          child: Text(
-            'History',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black87,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: _callHistory.length,
+        itemBuilder: (context, index) {
+          final call = _callHistory[index];
+          final isIncoming = call.receiverId == _currentUserId;
+          
+          return ListTile(
+            leading: Icon(
+              isIncoming ? Icons.call_received : Icons.call_made,
+              color: call.callStatus == CallStatus.missed ? Colors.red : (isIncoming ? Colors.green : Colors.blue),
+              size: 20,
             ),
-          ),
-        ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _callHistory.length,
-          itemBuilder: (context, index) {
-            final call = _callHistory[index];
-            final isIncoming = call.receiverId == _currentUserId;
-            
-            return ListTile(
-              leading: Icon(
-                isIncoming ? Icons.call_received : Icons.call_made,
-                color: call.callStatus == CallStatus.missed ? Colors.red : (isIncoming ? Colors.green : Colors.blue),
-                size: 20,
+            title: Text(
+              call.callStatus == CallStatus.missed ? 'Missed Call' : (isIncoming ? 'Incoming Call' : 'Outgoing Call'),
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white : Colors.black87,
               ),
-              title: Text(
-                call.callStatus == CallStatus.missed ? 'Missed Call' : (isIncoming ? 'Incoming Call' : 'Outgoing Call'),
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
+            ),
+            subtitle: Text(
+              DateFormat('MMM d, h:mm a').format(call.timestamp),
+               style: GoogleFonts.poppins(
+                color: isDark ? Colors.white60 : Colors.grey.shade600,
+                fontSize: 12,
               ),
-              subtitle: Text(
-                DateFormat('MMM d, h:mm a').format(call.timestamp),
-                 style: GoogleFonts.poppins(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
-              ),
-            );
-          },
-        ),
-      ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

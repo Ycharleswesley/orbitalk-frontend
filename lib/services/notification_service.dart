@@ -11,6 +11,7 @@ import 'package:firebase_core/firebase_core.dart'; // Added for Firebase.initial
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import '../screens/incoming_call_screen.dart';
 import '../screens/chat_detail_screen.dart';
+import '../screens/main_screen.dart';
 import 'call_service.dart'; // Added
 import '../config/translation_config.dart';
 
@@ -24,7 +25,35 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   // Check for Call Notification
   final data = message.data;
-  final isCall = data['type'] == 'call' || (data['callId'] != null);
+  final type = data['type'] ?? '';
+  final isCall = type == 'call' || (data['callId'] != null);
+
+  // Handle Missed Call Notification
+  if (type == 'missed_call') {
+     final callId = data['callId'] ?? '';
+     final callerName = data['callerName'] ?? 'Unknown';
+     final callerId = data['callerId'] ?? '';
+
+     final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+     final AndroidNotificationDetails missedDetails = AndroidNotificationDetails(
+       'orbitalk_calls_v3',
+       'UTELO Calls',
+       importance: Importance.high,
+       priority: Priority.high,
+       category: AndroidNotificationCategory.call,
+       playSound: true,
+       enableVibration: true,
+     );
+
+     await flutterLocalNotificationsPlugin.show(
+       callId.hashCode,
+       'Missed call',
+       'Missed call from $callerName',
+       NotificationDetails(android: missedDetails),
+       payload: callId.toString().isEmpty ? null : 'missed_$callId|$callerId',
+     );
+     return;
+  }
 
   if (isCall) {
      final callId = data['callId'];
@@ -53,8 +82,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
        final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
        
        final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'orbitalk_calls_silent_v4', // FORCE NEW CHANNEL for POP UP
-        'Incoming Call (Silent v4)',
+        'orbitalk_calls_ringing_v7', // Ringing channel (plays default ringtone)
+        'Incoming Call (Ringing v7)',
         importance: Importance.max,
         priority: Priority.max,
         fullScreenIntent: true, // CRITICAL: This attempts to launch the app
@@ -63,11 +92,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           AndroidNotificationAction('accept', 'Accept', icon: DrawableResourceAndroidBitmap('ic_call_answer'), showsUserInterface: true, titleColor: Color(0xFF4CAF50)),
           AndroidNotificationAction('decline', 'Decline', icon: DrawableResourceAndroidBitmap('ic_call_decline'), showsUserInterface: false, titleColor: Color(0xFFE53935)),
         ],
-        playSound: false, // Handled by RingtonePlayer
+        playSound: true, // Use device default ringtone
         enableVibration: true,
         vibrationPattern: Int64List.fromList([0, 1000, 500, 1000]), // Force Pop-up
         timeoutAfter: 60000, // Auto-cancel after 60s
         visibility: NotificationVisibility.public,
+        ongoing: true,
       );
       
       await flutterLocalNotificationsPlugin.show(
@@ -198,6 +228,17 @@ class NotificationService {
         vibrationPattern: Int64List.fromList([0, 1000, 500, 1000]),
         enableLights: true,
       );
+      
+      const AndroidNotificationChannel ringingCallChannel = AndroidNotificationChannel(
+        'orbitalk_calls_ringing_v7',
+        'Incoming Call (Ringing v7)',
+        description: 'Ringing channel for incoming calls (default ringtone)',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+      );
 
       final androidPlugin = _localNotifications
           .resolvePlatformSpecificImplementation<
@@ -207,6 +248,7 @@ class NotificationService {
           await androidPlugin.createNotificationChannel(channel);
           await androidPlugin.createNotificationChannel(callChannel);
           await androidPlugin.createNotificationChannel(silentCallChannel);
+          await androidPlugin.createNotificationChannel(ringingCallChannel);
       }
       debugPrint('✅ Notification channels created');
 
@@ -306,6 +348,32 @@ class NotificationService {
     );
   }
 
+  Future<void> _showMissedCallNotification({
+    required String callId,
+    required String callerName,
+    String? callerId,
+  }) async {
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'orbitalk_calls_v3',
+      'UTELO Calls',
+      importance: Importance.high,
+      priority: Priority.high,
+      category: AndroidNotificationCategory.call,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    final NotificationDetails notificationDetails = NotificationDetails(android: androidDetails);
+
+    await _localNotifications.show(
+      callId.hashCode,
+      'Missed call',
+      'Missed call from $callerName',
+      notificationDetails,
+      payload: callId.isEmpty ? null : 'missed_$callId|${callerId ?? ''}',
+    );
+  }
+
   // Handle foreground messages (decide whether to show notification)
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
     final msgChatRoomId = message.data['chatRoomId'];
@@ -315,12 +383,24 @@ class NotificationService {
       debugPrint('NotificationService: Suppressing notification for active chat: $msgChatRoomId');
       return; 
     }
-    // 2. CHECK FOR CALL (Direct Push)
+    // 2. CHECK FOR CALL / MISSED CALL (Direct Push)
     // FIX: Unconditionally suppress Call Notifications in Foreground.
     // CallService (Firestore Listener) handles the UI.
     // This prevents "Double Screens" and "Double Audio".
     final data = message.data;
     final payload = data['payload'] ?? '';
+
+    if (data['type'] == 'missed_call') {
+       final callId = data['callId'] ?? '';
+       final callerName = data['callerName'] ?? 'Unknown';
+       final callerId = data['callerId'];
+       await _showMissedCallNotification(
+         callId: callId,
+         callerName: callerName,
+         callerId: callerId,
+       );
+       return;
+    }
     
     if (data['type'] == 'call' || data['callId'] != null || payload.toString().startsWith('call_')) {
        debugPrint('NotificationService: Foreground Call Message -> Suppressing (CallService handles UI).');
@@ -370,13 +450,18 @@ class NotificationService {
       return;
     }
 
+    if (payload.startsWith('missed_')) {
+      // Open app to main screen (call logs are updated)
+      navigatorKey.currentState!.push(
+        MaterialPageRoute(builder: (context) => const MainScreen()),
+      );
+      return;
+    }
+
     if (payload.startsWith('call_')) {
       final parts = payload.replaceAll('call_', '').split('|');
       final callId = parts[0];
       String callerId = parts.length > 1 ? parts[1] : '';
-      
-      // STOP Notification Sound Immediately (Non-blocking)
-      cancelCallNotification(callId);
       
       // Fetch missing caller info (or verify status)
       String callerName = 'Caller';
@@ -423,6 +508,7 @@ class NotificationService {
             callerName: callerName, 
             callerAvatar: callerAvatar,
             callerProfileColor: callerProfileColor,
+            fromNotification: true,
             autoAnswer: autoAnswer, 
           ),
           transitionDuration: Duration.zero,
@@ -497,8 +583,8 @@ class NotificationService {
       // Notification is purely for visual Heads-Up Display
       
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'orbitalk_calls_ringing_v6', // Use Silent Channel v5
-        'Incoming Call (Ringing v6)',
+        'orbitalk_calls_ringing_v7', // Ringing channel
+        'Incoming Call (Ringing v7)',
         importance: Importance.max,
         priority: Priority.max,
         category: AndroidNotificationCategory.call,
@@ -510,6 +596,7 @@ class NotificationService {
         vibrationPattern: Int64List.fromList([0, 1000, 500, 1000]), // Force Pop-up
         color: Colors.blue, // Blue Theme (App Primary)
         timeoutAfter: 60000, // 60s timeout to match timeout logic
+        ongoing: true,
         actions: [
           AndroidNotificationAction('accept', 'Accept', icon: DrawableResourceAndroidBitmap('ic_call_answer'), showsUserInterface: true, titleColor: Color(0xFF4CAF50)),
           AndroidNotificationAction('decline', 'Decline', icon: DrawableResourceAndroidBitmap('ic_call_decline'), showsUserInterface: false, titleColor: Color(0xFFE53935)),
@@ -536,6 +623,7 @@ class NotificationService {
     required String callerId,
     required String callerName,
     required String callId,
+    String type = 'call',
     String? receiverToken,
     String? callerAvatar,
     int? callerColor,
@@ -549,6 +637,7 @@ class NotificationService {
       final uri = Uri.parse('${TranslationConfig.httpServerUrl}/notify-call');
       final payload = {
         'token': receiverToken,
+        'type': type,
         'callId': callId,
         'callerId': callerId,
         'callerName': callerName,

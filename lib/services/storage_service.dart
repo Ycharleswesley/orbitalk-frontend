@@ -139,6 +139,37 @@ class StorageService {
     }
   }
 
+  // Upload chat document
+  Future<String?> uploadChatDocument(File file, String chatRoomId, String fileName) async {
+    try {
+      // Create a unique filename while preserving the original name's extension (and maybe name)
+      // But to avoid collisions, we should probably prefix unique ID or store in subfolder
+      // Let's use uuid + extension, but we need to store the original filename in Firestore metadata if needed.
+      // Actually, ChatService sendDocumentMessage takes 'fileName' as an argument.
+      // So here we just need a unique path.
+      
+      final String extension = path.extension(fileName);
+      final String uniqueName = '${_uuid.v4()}$extension';
+      final Reference ref = _storage.ref().child('chat_documents/$chatRoomId/$uniqueName');
+
+      final UploadTask uploadTask = ref.putFile(
+        file,
+        SettableMetadata(
+          contentType: 'application/octet-stream', // Generic binary, or try to guess mime type
+          customMetadata: {'originalName': fileName},
+        ),
+      );
+
+      final TaskSnapshot snapshot = await uploadTask;
+      final String downloadUrl = await snapshot.ref.getDownloadURL();
+      
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Error uploading chat document: $e');
+      return null;
+    }
+  }
+
   // Get upload progress stream
   Stream<TaskSnapshot> uploadWithProgress(File file, String storagePath) {
     final Reference ref = _storage.ref().child(storagePath);

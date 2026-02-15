@@ -16,6 +16,7 @@ class AudioProcessorService {
 
   bool _isInitialized = false;
   bool _isProcessing = false;
+  bool _isPlayerStarted = false;
   bool _isMicMuted = false;
   bool _isOutputEnabled = true; // Controls if we write chunks to player (Mute Output)
   StreamSubscription<List<int>>? _audioSubscription;
@@ -85,6 +86,7 @@ class AudioProcessorService {
       });
       await _recorder.start();
       await _player.start();
+      _isPlayerStarted = true;
       
       _isProcessing = true;
       debugPrint('AudioProcessorService: Audio processing started');
@@ -96,6 +98,7 @@ class AudioProcessorService {
   // Play audio chunk received from server
   Future<void> playAudio(Uint8List audioData) async {
     if (!_isInitialized || !_isProcessing || !_isOutputEnabled) return;
+    if (!_isPlayerStarted) return;
     try {
       await _player.writeChunk(audioData);
     } catch (e) {
@@ -153,9 +156,9 @@ class AudioProcessorService {
     try {
       debugPrint('AudioProcessorService: Starting CAPTURE-ONLY (Hybrid Mode)');
       
-      // We rely on the AudioSession potentially already being configured by WebRTC or us.
-      // We do NOT call setActive(true) aggressively if WebRTC owns it, but we might need to?
-      // Let's try just starting the recorder.
+      // Ensure session is active for reliable mic capture
+      final session = await AudioSession.instance;
+      await session.setActive(true);
       
       _audioSubscription = _recorder.audioStream.listen((data) {
         // Send to Server for Translation
@@ -176,6 +179,19 @@ class AudioProcessorService {
     }
   }
 
+  // Start playback only (for translated TTS) without restarting recorder
+  Future<void> startPlayback() async {
+    if (!_isInitialized) await initialize();
+    if (_isPlayerStarted) return;
+    try {
+      await _player.start();
+      _isPlayerStarted = true;
+      debugPrint('AudioProcessorService: Playback started');
+    } catch (e) {
+      debugPrint('AudioProcessorService: Error starting playback - $e');
+    }
+  }
+
   Future<void> stop() async {
     if (!_isProcessing) return;
 
@@ -189,6 +205,7 @@ class AudioProcessorService {
       await _player.stop();
       
       _isProcessing = false;
+      _isPlayerStarted = false;
       debugPrint('AudioProcessorService: Stopped successfully');
     } catch (e) {
       debugPrint('AudioProcessorService: Error stopping - $e');

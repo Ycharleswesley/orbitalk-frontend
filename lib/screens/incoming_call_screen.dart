@@ -11,6 +11,7 @@ import 'active_call_screen.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import '../utils/app_colors.dart'; // Added
+import '../widgets/mesh_gradient_background.dart'; // Added
 
 class IncomingCallScreen extends StatefulWidget {
   final String callId;
@@ -19,6 +20,7 @@ class IncomingCallScreen extends StatefulWidget {
   final String callerAvatar;
   final int callerProfileColor; 
   final bool autoAnswer; 
+  final bool fromNotification;
 
   const IncomingCallScreen({
     Key? key,
@@ -28,6 +30,7 @@ class IncomingCallScreen extends StatefulWidget {
     required this.callerAvatar,
     this.callerProfileColor = 0, 
     this.autoAnswer = false,
+    this.fromNotification = false,
   }) : super(key: key);
 
   @override
@@ -50,9 +53,11 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
     debugPrint('IncomingCallScreen: MOUNTED for Call ID: ${widget.callId}'); // DEBUG LOG
     WidgetsBinding.instance.addObserver(this);
     
-    // Clear any persistent notifications immediately
-    _notificationService.cancelCallNotification(widget.callId);
-    _notificationService.cancelAllNotifications();
+    // Clear notifications only when not launched from a notification
+    if (!widget.fromNotification) {
+      _notificationService.cancelCallNotification(widget.callId);
+      _notificationService.cancelAllNotifications();
+    }
     
     // Auto-Answer Trigger
     if (widget.autoAnswer) {
@@ -107,26 +112,11 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
     debugPrint('IncomingCallScreen: BUILDING UI...'); // DEBUG LOG
     return WillPopScope(
       onWillPop: () async => false,
-      child: Scaffold(
-        body: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(widget.callerId).snapshots(),
-          builder: (context, profileSnapshot) {
-            int liveColorId = widget.callerProfileColor;
-            if (profileSnapshot.hasData && profileSnapshot.data!.exists) {
-              liveColorId = (profileSnapshot.data!.data() as Map<String, dynamic>)['profileColor'] ?? liveColorId;
-            }
 
-            return Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: AppColors.getGradientColors(liveColorId),
-                ),
-              ),
-              child: SafeArea(
+      child: Scaffold(
+        backgroundColor: Colors.transparent, // Transparent for Mesh
+        body: MeshGradientBackground(
+          child: SafeArea(
                 child: StreamBuilder<CallModel>(
                   stream: _callService.getCallStream(widget.callId),
                   builder: (context, snapshot) {
@@ -140,6 +130,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
                         call.callStatus == CallStatus.ended) {
                        
                        _callService.stopRinging();
+                       _notificationService.cancelCallNotification(widget.callId);
                        FlutterRingtonePlayer().play(
                           fromAsset: "assets/sounds/end_call.mp3",
                           ios: IosSounds.glass,
@@ -171,7 +162,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
                           child: CustomPaint(
                             painter: RipplePainter(
                               _rippleController,
-                              color: AppColors.getColor(liveColorId),
+                              color: AppColors.getColor(widget.callerProfileColor), // Use Widget param initially or fetch?
+                              // Note: We were fetching profile before. Let's fix that.
                             ),
                             child: Center(
                               child: Container(
@@ -179,7 +171,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
                                 height: 140,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: AppColors.getColor(liveColorId),
+                                  color: AppColors.getColor(widget.callerProfileColor),
                                   border: Border.all(color: Colors.white.withOpacity(0.9), width: 4),
                                   boxShadow: [
                                     BoxShadow(
@@ -233,9 +225,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
                     );
                   },
                 ),
-              ),
-            );
-          },
+             ),
         ),
       ),
     );
@@ -368,6 +358,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
       // STOP RINGTONE IMMEDIATELY
       _callService.stopRinging();
       FlutterRingtonePlayer().stop(); // Force Direct Stop
+      _notificationService.cancelCallNotification(widget.callId);
 
 
       await _callService.answerCall(widget.callId, userId, userName ?? 'User');
@@ -404,6 +395,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> with TickerProv
          looping: false,
          volume: 0.5,
       );
+      _notificationService.cancelCallNotification(widget.callId);
 
       if (mounted) Navigator.of(context).pop();
     } catch(e) {
