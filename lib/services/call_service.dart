@@ -96,6 +96,35 @@ class CallService {
         debugPrint('CallService: Error fetching receiver color: $e');
       }
 
+      // Handle Not Logged In / No FCM Token
+      if (receiverFcmToken.isEmpty) {
+        debugPrint('CallService: Receiver has no FCM token. Logging as missed.');
+        final callId = _firestore.collection('calls').doc().id;
+        final channelId = 'call_$callId';
+        
+        final callData = CallModel(
+          callId: callId,
+          callerId: callerId,
+          callerName: callerName,
+          callerAvatar: callerAvatar,
+          receiverId: receiverId,
+          receiverName: receiverName,
+          receiverAvatar: receiverAvatar,
+          callType: CallType.outgoing,
+          callStatus: CallStatus.missed, // Mark as missed immediately
+          timestamp: DateTime.now(),
+          channelId: channelId,
+          callerProfileColor: callerColor,
+          receiverProfileColor: receiverColor,
+        );
+
+        await _firestore.collection('calls').doc(callId).set(callData.toMap());
+        
+        _showDebugToast('User is currently offline or not logged in.');
+        
+        return callId; // Return so the caller's UI can stop loading/initiating
+      }
+
       final callId = _firestore.collection('calls').doc().id;
       final channelId = 'call_$callId';
       
@@ -195,11 +224,19 @@ class CallService {
   Future<void> cancelCall(String callId) async {
     try {
       debugPrint('CallService: Cancelling call $callId');
+      
+      // Send WebSocket Cancel Signal (Speed up UX for others)
+      if (_webSocketService.isConnected) {
+         _webSocketService.sendCallControlMessage('cancel_call');
+      }
+
       stopRinging();
       await _notificationService.cancelCallNotification(callId);
       await _firestore.collection('calls').doc(callId).update({
         'callStatus': CallStatus.cancelled.name,
       });
+      // Force stop local services
+      await _stopCallServices();
     } catch (e) {
       debugPrint('CallService: Error cancelling call: $e');
       rethrow;
@@ -255,6 +292,12 @@ class CallService {
   Future<void> endCall(String callId, [int? duration]) async {
     try {
       debugPrint('CallService: Ending call $callId');
+      
+      // Send WebSocket End Signal
+      if (_webSocketService.isConnected) {
+         _webSocketService.sendCallControlMessage('end_call');
+      }
+
       stopRinging();
       await _stopCallServices();
       await _firestore.collection('calls').doc(callId).update({
@@ -312,7 +355,7 @@ class CallService {
          }
          // Stop monitoring once connected (or keep monitoring for end? _initializeCallServices does that)
          // Actually _initializeCallServices sets up _callEndedSubscription
-         // So we can cancel this "Start Monitor" once we start.
+          // So we can cancel this "Start Monitor" once we start.
          monitorSub?.cancel();
       } else if (statusStr == CallStatus.ended.name || 
                  statusStr == CallStatus.declined.name || 
@@ -320,8 +363,47 @@ class CallService {
          debugPrint('CallService: Call ended/declined before answer. Stopping monitor & services.');
          _stopCallServices(); // Cleanup pre-connected socket
          monitorSub?.cancel();
+         _callEndedSubscription?.cancel(); // Cancel the WS listener if we added one
       }
     });
+
+    // NEW: Listen for WebSocket "call_ended" signal during ringing phase
+    // This handles the case where Peer cancels/declines via WebSocket before answering
+    if (_webSocketService.isConnected) {
+        _setupRingingCallEndListener(callId, monitorSub);
+    } else {
+       // Wait for connection
+       StreamSubscription? connSub;
+       connSub = _webSocketService.connectionStatusStream.listen((isConnected) {
+          if (isConnected) {
+             // CRITICAL: Only setup listener if we are STILL in ringing phase (not answered yet)
+             if (!_isCallActive) {
+                _setupRingingCallEndListener(callId, monitorSub);
+             }
+             connSub?.cancel();
+          }
+       });
+    }
+  }
+
+  void _setupRingingCallEndListener(String callId, StreamSubscription<DocumentSnapshot>? monitorSub) {
+     debugPrint('CallService: Setting up WS End Call Listener for ringing phase...');
+     _callEndedSubscription?.cancel();
+     _callEndedSubscription = _webSocketService.callEndedStream.listen((_) {
+         debugPrint('CallService: WebSocket signaled Call End during ringing.');
+         _stopCallServices();
+         monitorSub?.cancel();
+         
+         // Update Firestore to ensure UI closes
+         _firestore.collection('calls').doc(callId).update({
+            'callStatus': CallStatus.ended.name
+         });
+         
+         // Force Navigation Pop if applicable
+         if (navigatorKey.currentState != null && navigatorKey.currentState!.canPop()) {
+             navigatorKey.currentState!.pop();
+         }
+     });
   }
 
   // Common initialization logic for both Caller and Receiver
@@ -559,7 +641,8 @@ class CallService {
     // Check Lifecycle State
     final state = WidgetsBinding.instance.lifecycleState;
     debugPrint('CallService: App Lifecycle State: $state');
-    if (navigatorKey.currentState != null) {
+    
+    if (navigatorKey.currentState != null && navigatorKey.currentContext != null) {
       debugPrint('CallService: Navigator state found, pushing IncomingCallScreen...');
       _currentIncomingCallId = callData.callId; // Mark as active
       
@@ -586,15 +669,16 @@ class CallService {
     } else {
       debugPrint('CallService WARNING: Navigator State is null (Attempt ${retryCount + 1})');
       
-      if (retryCount < 5) {
-        // Retry after a short delay (UI might still be initializing or context switching)
-        debugPrint('CallService: Retrying navigation in 500ms...');
-        Future.delayed(const Duration(milliseconds: 500), () {
+      if (retryCount < 10) { // Increased retries from 5 to 10
+        // Retry after a longer delay (UI might still be initializing or context switching)
+        debugPrint('CallService: Retrying navigation in 800ms...');
+        Future.delayed(const Duration(milliseconds: 800), () {
           _handleIncomingCall(callData, retryCount: retryCount + 1);
         });
       } else {
-        debugPrint('CallService ERROR: Navigator State remained null after 5 attempts.');
+        debugPrint('CallService ERROR: Navigator State remained null after 10 attempts.');
         _showDebugToast('Critical: Could not show call interface (Navigator missing)');
+        // Fallback: Show Notification so user can at least tap it to enter app
         try {
           _notificationService.showIncomingCallNotification(
             callId: callData.callId,
