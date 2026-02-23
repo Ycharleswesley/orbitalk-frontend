@@ -10,7 +10,7 @@ import '../services/call_service.dart';
 import '../services/local_storage_service.dart';
 import 'image_viewer_screen.dart';
 import 'chat_detail_screen.dart';
-
+import 'subscription_screen.dart';
 class ProfileViewScreen extends StatefulWidget {
   final String userId;
   final String? contactName;
@@ -35,10 +35,29 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   List<CallModel> _callHistory = [];
   String? _currentUserId;
 
+  bool _isUserOnline(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final isOnline = data['isOnline'] == true;
+    if (!isOnline) return false;
+    
+    final lastSeen = data['lastSeen'] as Timestamp?;
+    if (lastSeen == null) return false;
+
+    // Use a 5-minute timeout window
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen.toDate());
+    return difference.inMinutes < 5;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -104,7 +123,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
           name: name,
           profilePicture: profilePicture,
           size: 150,
-          isOnline: _userData?['isOnline'] ?? false,
+          isOnline: _isUserOnline(_userData),
           onTap: () {
             if (profilePicture != null && profilePicture.isNotEmpty) {
               Navigator.push(
@@ -127,7 +146,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     final name = _userData?['name'] ?? widget.contactName ?? 'Unknown User';
     final phoneNumber = _userData?['phoneNumber'] ?? '';
     final lastSeen = _userData?['lastSeen'] as Timestamp?;
-    final isOnline = _userData?['isOnline'] ?? false;
+    final isOnline = _isUserOnline(_userData);
 
     String statusText = 'Offline';
     if (isOnline) {
@@ -264,6 +283,44 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                               ),
                             );
                           },
+                        ),
+                        InkWell(
+                          onTap: () {
+                             Navigator.push(context, MaterialPageRoute(builder: (context) => const SubscriptionScreen()));
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFFDF00), Color(0xFFD4AF37)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.amber.withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Image.asset('assets/images/crown_icon.png', width: 16, height: 16),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'PREMIUM',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),

@@ -151,7 +151,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
+              border: Border.all(color: const Color(0xFF0141B5), width: 3),
             ),
             child: ClipOval(
               child: _selectedImage != null
@@ -164,24 +164,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           _profilePictureUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: Colors.white.withOpacity(0.2),
-                              child: const Icon(
-                                Icons.person,
-                                size: 60,
-                                color: Colors.white,
-                              ),
-                            );
+                            return _buildInitialsAvatar();
                           },
                         )
-                      : Container(
-                          color: Colors.white.withOpacity(0.2),
-                          child: const Icon(
-                            Icons.person,
-                            size: 60,
-                            color: Colors.white,
-                          ),
-                        ),
+                      : _buildInitialsAvatar(),
             ),
           ),
           Positioned(
@@ -209,6 +195,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Widget _buildInitialsAvatar() {
+    final name = _nameController.text.trim();
+    final initials = name.isNotEmpty
+        ? name.trim().split(' ').take(2).map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').join()
+        : '?';
+
+    return Container(
+      color: AppColors.getColor(_selectedColorId),
+      alignment: Alignment.center,
+      child: Text(
+        initials,
+        style: GoogleFonts.poppins(
+          fontSize: 40,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
   Widget _buildColorPicker() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,12 +233,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: AppColors.profileColors.map((colorMap) {
              final int id = colorMap['id'];
              final List<Color> gradientColors = colorMap['gradient']; // Use gradient list
-             final bool isSelected = id == _selectedColorId;
+             final bool hasImage = _selectedImage != null || (_profilePictureUrl != null && _profilePictureUrl!.isNotEmpty);
+             final bool isSelected = id == _selectedColorId && !hasImage;
              
              return GestureDetector(
                onTap: () {
                  setState(() {
                    _selectedColorId = id;
+                   _selectedImage = null;
+                   _profilePictureUrl = '';
                  });
                },
                child: Container(

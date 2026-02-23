@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../utils/app_colors.dart';
 
 class UserAvatar extends StatelessWidget {
   final String? profilePicture;
@@ -130,13 +131,7 @@ class UserAvatar extends StatelessWidget {
 
   Color _getDeterministicColor() {
     if (colorId != null) {
-       // Use shared AppColors logic if available in a full implementation, 
-       // but here we can replicate or map it.
-       // For now, let's use the same deterministic logic as the fallback
-       // effectively ignoring colorId if we don't import AppColors, 
-       // OR we can simple allow the colorId to seed the random logic.
-       // Let's stick to name-based for consistency across screens unless colorId is critical.
-       // Actually, the user asked for "random color" which usually means specific to the person.
+       return AppColors.getColor(colorId!);
     }
     
     final colors = [
@@ -146,7 +141,7 @@ class UserAvatar extends StatelessWidget {
       const Color(0xFF00C853), // UTELO Green
     ];
     
-    final seed = (name.hashCode + (colorId ?? 0)).abs();
+    final seed = (name.hashCode).abs();
     return colors[seed % colors.length];
   }
 }

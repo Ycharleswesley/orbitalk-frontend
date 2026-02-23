@@ -17,6 +17,7 @@ import '../services/local_storage_service.dart';
 import '../services/encryption_service.dart';
 import '../services/storage_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:open_filex/open_filex.dart';
 import '../services/call_service.dart';
 import '../services/notification_service.dart';
 import 'image_viewer_screen.dart';
@@ -1515,21 +1516,36 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
   Future<void> _saveFile(String url, String fileName) async {
     try {
       if (await Permission.storage.request().isGranted || await Permission.manageExternalStorage.request().isGranted || await Permission.photos.request().isGranted) {
-         // Permissions granted (or simplistic check for now)
+         // Permissions granted
       }
 
-      Directory dir;
+      Directory? dir;
       if (Platform.isAndroid) {
-        dir = Directory('/storage/emulated/0/Download/OrbiTalk');
+         // Attempt to use system Download folder, fallback to app documents
+         dir = Directory('/storage/emulated/0/Download');
+         if (!await dir.exists()) {
+            dir = await getExternalStorageDirectory();
+         }
       } else {
         dir = await getApplicationDocumentsDirectory();
       }
 
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
+      if (dir == null) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Could not access storage directory')),
+           );
+        }
+        return;
       }
 
-      final savePath = '${dir.path}/$fileName';
+      // Create OrbiTalk subfolder 
+      final orbiTalkDir = Directory('${dir.path}/OrbiTalk');
+      if (!await orbiTalkDir.exists()) {
+        await orbiTalkDir.create(recursive: true);
+      }
+
+      final savePath = '${orbiTalkDir.path}/$fileName';
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1725,16 +1741,7 @@ class _MessageBubbleState extends State<MessageBubble> with AutomaticKeepAliveCl
                                 )
                             else if (documentUrl.isNotEmpty)
                                 GestureDetector(
-                                    onTap: () async {
-                                        final Uri uri = Uri.parse(documentUrl);
-                                        if (await canLaunchUrl(uri)) {
-                                            await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                        } else {
-                                           ScaffoldMessenger.of(context).showSnackBar(
-                                               const SnackBar(content: Text('Could not open document')),
-                                           );
-                                        }
-                                    },
+                                    onTap: () => _openOrDownloadFile(documentUrl, fileName),
                                     child: const Icon(Icons.download_rounded, color: Colors.white),
                                 )
                         ],
@@ -1757,6 +1764,63 @@ class _MessageBubbleState extends State<MessageBubble> with AutomaticKeepAliveCl
         ),
       ),
     );
+  }
+
+  Future<void> _openOrDownloadFile(String url, String fileName) async {
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Opening $fileName...')),
+        );
+      }
+
+      Directory? dir;
+      if (Platform.isAndroid) {
+         dir = Directory('/storage/emulated/0/Download');
+         if (!await dir.exists()) {
+            dir = await getExternalStorageDirectory();
+         }
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
+      if (dir == null) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Could not access storage')),
+           );
+        }
+        return;
+      }
+
+      final orbiTalkDir = Directory('${dir.path}/OrbiTalk');
+      if (!await orbiTalkDir.exists()) {
+        await orbiTalkDir.create(recursive: true);
+      }
+
+      final savePath = '${orbiTalkDir.path}/$fileName';
+      final file = File(savePath);
+
+      if (!await file.exists()) {
+        await Dio().download(url, savePath);
+      }
+
+      final result = await OpenFilex.open(savePath);
+      if (result.type != ResultType.done) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Could not open file: ${result.message}')),
+           );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error opening file: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   String _formatFileSize(int bytes) {

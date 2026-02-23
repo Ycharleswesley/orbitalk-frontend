@@ -29,6 +29,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final LocalStorageService _localStorage = LocalStorageService();
   final CallService _callService = CallService();
   StreamSubscription<User?>? _authSubscription;
+  Timer? _onlinePingTimer;
   
   late final List<Widget> _screens;
 
@@ -47,6 +48,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     });
 
     _setOnlineStatus(true);
+    _startOnlinePing();
     _ensureCallListener();
     _authSubscription = _authService.authStateChanges.listen((user) async {
       if (user != null) {
@@ -67,9 +69,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void dispose() {
     _pageController.dispose(); // Dispose Controller
     WidgetsBinding.instance.removeObserver(this);
+    _stopOnlinePing();
     _setOnlineStatus(false);
     _authSubscription?.cancel();
     super.dispose();
+  }
+
+  void _startOnlinePing() {
+    _onlinePingTimer?.cancel();
+    _onlinePingTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      _setOnlineStatus(true);
+    });
+  }
+
+  void _stopOnlinePing() {
+    _onlinePingTimer?.cancel();
+    _onlinePingTimer = null;
   }
 
   @override
@@ -77,9 +92,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       _setOnlineStatus(true);
+      _startOnlinePing();
       _ensureCallListener();
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    } else if (state == AppLifecycleState.paused || 
+               state == AppLifecycleState.inactive || 
+               state == AppLifecycleState.detached || 
+               state == AppLifecycleState.hidden) {
       _setOnlineStatus(false);
+      _stopOnlinePing();
     }
   }
 

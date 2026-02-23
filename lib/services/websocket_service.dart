@@ -254,6 +254,23 @@ class WebSocketService {
     }
   }
 
+  // Send Call Control Message (cancel/end)
+  void sendCallControlMessage(String type, {String? reason}) {
+     if (!_isConnected || _channel == null) return;
+     
+     final message = {
+       'type': type,
+       'reason': reason ?? 'user_action'
+     };
+     
+     try {
+       _channel!.sink.add(jsonEncode(message));
+       debugPrint('WebSocketService: Sent control message: $type');
+     } catch (e) {
+       debugPrint('WebSocketService: Error sending control message: $e');
+     }
+  }
+
   // Handle errors
   void _onError(error) {
     debugPrint('WebSocketService: Error - $error');

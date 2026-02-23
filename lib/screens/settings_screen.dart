@@ -16,6 +16,7 @@ import '../widgets/curved_header.dart'; // Import CurvedHeader
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/user_avatar.dart'; // Added Import
 import 'package:url_launcher/url_launcher.dart'; // Added
+import 'subscription_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -28,7 +29,6 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
   final AuthService _authService = AuthService();
   final LocalStorageService _localStorage = LocalStorageService();
   final SettingsService _settingsService = SettingsService();
-  
   String _userName = 'Loading...';
   String _phoneNumber = '';
   String _profilePicture = '';
@@ -80,6 +80,11 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
     _loadUserData();
     _loadSettings();
   }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
   
   Future<void> _loadSettings() async {
     await _settingsService.loadSettings();
@@ -120,11 +125,13 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
         final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
         if (doc.exists && mounted) {
           final data = doc.data()!;
+          final fetchedColorId = data['profileColor'] as int?; // Fetch profile color
+
           setState(() {
             _userName = data['name'] ?? _userName;
             _phoneNumber = data['phoneNumber'] ?? _phoneNumber;
             _profilePicture = data['profilePicture'] ?? _profilePicture;
-            _email = data['email'] ?? ''; // Fetch email
+            _email = data['email'] ?? ''; 
             _bio = data['bio'] ?? _bio;
             _language = data['language'] ?? _language;
             _isLoading = false;
@@ -136,8 +143,12 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
           await _localStorage.saveProfilePicture(_profilePicture);
           await _localStorage.saveBio(_bio);
           await _localStorage.saveLanguage(_language);
+          
+          if (fetchedColorId != null) {
+            await _localStorage.saveProfileColor(fetchedColorId);
+          }
         } else if (mounted) {
-          setState(() => _isLoading = false); // If doc doesn't exist, stop loading
+          setState(() => _isLoading = false); 
         }
       } catch (e) {
         debugPrint('Error loading user data from Firestore: $e');
@@ -322,8 +333,6 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
                   _buildNotificationTile(icon: Icons.message, iconColor: const Color(0xFF0141B5), title: 'Message Notifications', subtitle: 'Receive notifications for new messages', value: _messageNotifications, onChanged: (val) { setModalState(() => _messageNotifications = val); setState(() => _messageNotifications = val); _settingsService.setMessageNotifications(val); }),
                   const SizedBox(height: 12),
                   _buildNotificationTile(icon: Icons.call, iconColor: const Color(0xFF0141B5), title: 'Call Notifications', subtitle: 'Receive notifications for incoming calls', value: _callNotifications, onChanged: (val) { setModalState(() => _callNotifications = val); setState(() => _callNotifications = val); _settingsService.setCallNotifications(val); }),
-                  const SizedBox(height: 12),
-                  _buildNotificationTile(icon: Icons.vibration, iconColor: const Color(0xFF0141B5), title: 'Vibrate', subtitle: 'Vibrate on notifications', value: _vibrate, onChanged: (val) { setModalState(() => _vibrate = val); setState(() => _vibrate = val); _settingsService.setVibrate(val); }),
                   const SizedBox(height: 30),
                 ],
               ),
@@ -489,6 +498,69 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
         
         const SizedBox(height: 16),
         
+        // Premium Banner
+        GestureDetector(
+          onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const SubscriptionScreen()));
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFDF00), Color(0xFFD4AF37)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.amber.withOpacity(0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Image.asset('assets/images/crown_icon.png', width: 32, height: 32),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Upgrade to Premium',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        'Unlock exclusive features & plans',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.black87.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, color: Colors.black87, size: 16),
+              ],
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 16),
+        
         // Settings items
         GlassmorphicCard(
           color: isDark ? const Color(0xFF001133) : const Color(0xFFE3F2FD),
@@ -606,7 +678,7 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
               },
               blendMode: BlendMode.dstOut,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(top: 260),
+                padding: const EdgeInsets.only(top: 210),
                 child: content,
               ),
             ),
@@ -658,10 +730,7 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4, bottom: 2, left: 4),
-                    child: Text('General', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white)),
-                  ),
+                  // GENERAL TITLE REMOVED FROM HERE
                 ],
               ),
             ),

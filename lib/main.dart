@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import 'screens/splash_screen.dart';
 import 'services/theme_service.dart';
+import 'screens/subscription_screen.dart';
 import 'services/settings_service.dart';
 import 'services/auth_service.dart'; // While not a ChangeNotifier, useful if we provider it later or just init
 // import 'firebase_options.dart'; // Uncomment if using generated options
@@ -47,7 +48,7 @@ class MyApp extends StatelessWidget {
       builder: (context, themeService, child) {
         return MaterialApp(
           navigatorKey: navigatorKey,
-          title: 'OrbiTalk',
+          title: 'UTELO',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
             primarySwatch: Colors.blue,
@@ -62,6 +63,9 @@ class MyApp extends StatelessWidget {
           ),
           themeMode: themeService.themeMode,
           home: const SplashScreen(),
+          routes: {
+            '/subscription': (context) => const SubscriptionScreen(),
+          },
         );
       },
     );

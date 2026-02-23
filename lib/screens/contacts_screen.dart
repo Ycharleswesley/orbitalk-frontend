@@ -30,6 +30,20 @@ class _ContactsScreenState extends State<ContactsScreen> with AutomaticKeepAlive
   String _searchQuery = '';
   String? _errorMessage;
 
+  bool _isUserOnline(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final isOnline = data['isOnline'] == true;
+    if (!isOnline) return false;
+    
+    final lastSeen = data['lastSeen'] as Timestamp?;
+    if (lastSeen == null) return false;
+
+    // Use a 5-minute timeout window
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen.toDate());
+    return difference.inMinutes < 5;
+  }
+
   @override
   bool get wantKeepAlive => true; // Keep state alive
 
@@ -176,13 +190,17 @@ class _ContactsScreenState extends State<ContactsScreen> with AutomaticKeepAlive
                                  return StreamBuilder<DocumentSnapshot>(
                                    stream: UserService().getUserStream(uid),
                                    builder: (context, snapshot) {
-                                     final isOnline = (snapshot.data?.data() as Map<String, dynamic>?)?['isOnline'] ?? false;
+                                     final userData = snapshot.data?.data() as Map<String, dynamic>?;
+                                     final isOnline = _isUserOnline(userData);
+                                     final profileColor = userData?['profileColor'];
+
                                      return ListTile(
                                        leading: UserAvatar(
                                          name: name,
                                          profilePicture: avatar,
                                          size: 50,
                                          isOnline: isOnline,
+                                         colorId: profileColor,
                                          onTap: () {
                                            Navigator.push(context, MaterialPageRoute(
                                               builder: (context) => ProfileViewScreen(userId: uid),
@@ -337,6 +355,22 @@ class _ContactsScreenState extends State<ContactsScreen> with AutomaticKeepAlive
                   color: Colors.white,
                 ),
               ),
+              actions: [
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushNamed(context, '/subscription');
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Image.asset(
+                      'assets/images/crown_icon.png',
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
               bottomChild: Container(
                   height: 40,
                   margin: const EdgeInsets.only(bottom: 0, top: 0),

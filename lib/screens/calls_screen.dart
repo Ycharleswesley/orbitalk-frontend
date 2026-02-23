@@ -330,7 +330,7 @@ class CallsScreenState extends State<CallsScreen> with AutomaticKeepAliveClientM
 
                     return ListView.builder(
                        // Matches ContactsScreen
-                      padding: const EdgeInsets.only(top: 240, bottom: 120),
+                      padding: const EdgeInsets.only(top: 210, bottom: 120),
                       itemCount: calls.length,
                       itemBuilder: (context, index) {
                         final call = calls[index];
@@ -362,52 +362,31 @@ class CallsScreenState extends State<CallsScreen> with AutomaticKeepAliveClientM
             top: 0, left: 0, right: 0,
             child: CurvedHeader(
               showBack: false,
-              titleWidget: SizedBox(
-                height: 32,
-                child: Row(
-                  children: [
-                    const Icon(Icons.call, color: Colors.white, size: 24),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Voice Call',
-                      style: GoogleFonts.poppins(
-                        fontSize: 23,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (_currentUserId != null)
-                     Padding(
-                       padding: const EdgeInsets.only(left: 8, top: 4),
-                       child: Text(
-                        'ID: ...${_currentUserId!.substring(_currentUserId!.length - 4)}',
-                        style: GoogleFonts.poppins(fontSize: 10, color: Colors.white70),
-                       ),
-                     ),
-                  ],
+              titleWidget: Text(
+                'Voice Call',
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
-              bottomChild: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-                 Container(
-                    height: 40,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: TextField(
-                      autofocus: false,
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                      style: const TextStyle(color: Colors.black87),
-                      decoration: InputDecoration(
-                        hintText: 'Search',
-                        prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), // Adjusted vertical padding for centering
-                        suffixIcon: _searchQuery.isNotEmpty 
+              bottomChild: Container(
+                  height: 40,
+                  margin: const EdgeInsets.only(bottom: 0, top: 0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: TextField(
+                    autofocus: false,
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    style: const TextStyle(color: Colors.black87),
+                    decoration: InputDecoration(
+                      hintText: 'Search',
+                      prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), // Adjusted vertical padding for centering
+                      suffixIcon: _searchQuery.isNotEmpty 
                            ? IconButton(
                               icon: const Icon(Icons.close, color: Colors.grey, size: 18),
                               onPressed: () {
@@ -417,26 +396,25 @@ class CallsScreenState extends State<CallsScreen> with AutomaticKeepAliveClientM
                               },
                            )
                            : null
-                      ),
                     ),
-                 ),
-                 
-                 // Recents Title INSIDE Header
-
-                   Padding(
-                     padding: const EdgeInsets.only(top: 4, bottom: 2, left: 4),
-                     child: Text(
-                        'Recents',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white, // White to match header text
-                        ),
-                     ),
-                   ),
-               ],
-             ),
-             actions: [],
+                  ),
+               ),
+              actions: [
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushNamed(context, '/subscription');
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Image.asset(
+                      'assets/images/crown_icon.png',
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
           ),
           ),
         ],

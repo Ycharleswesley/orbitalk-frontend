@@ -18,6 +18,9 @@ class TranslationConfig {
   // PRODUCTION (Render.com)
   static const String websocketServerUrl = 'wss://orbitalk-backend-final.onrender.com';
   static const String httpServerUrl = 'https://orbitalk-backend-final.onrender.com';
+
+  // static const String websocketServerUrl = 'ws://192.168.88.30:8080';
+  // static const String httpServerUrl = 'http://192.168.88.30:8080';
   
   // Audio format constants
   static const int sampleRate = 16000; // 16kHz

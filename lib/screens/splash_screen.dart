@@ -186,25 +186,37 @@ class _SplashScreenState extends State<SplashScreen> {
                       'Designed & Developed by',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withOpacity(0.9), // Slightly higher opacity
+                        shadows: [
+                           const Shadow(blurRadius: 2, color: Colors.black45, offset: Offset(1, 1)),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Image.asset(
-                      'assets/linkupLogo.png',
-                      height: 70, 
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Linkup Communication Pvt. Ltd.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                      ),
-                      textAlign: TextAlign.center,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          'assets/linkupLogo.png',
+                          height: 50, // Reduced size
+                          width: 50,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Linkup Communication\nPvt. Ltd.', // Added newline for balance if needed, or keep single line depending on length
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                            shadows: [
+                               const Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(1, 1)),
+                            ],
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                      ],
                     ),
                   ],
                 ),
