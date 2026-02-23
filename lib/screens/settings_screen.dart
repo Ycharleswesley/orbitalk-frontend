@@ -572,7 +572,7 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
               if (_matchesSearch('Account', 'Change number, Delete Account')) _buildSettingsItem(icon: Icons.person_outline, title: 'Account', subtitle: 'Change number, Delete Account', onTap: () => _showAccountSettingsSheet(context)),
               if (_matchesSearch('Chat Settings', 'Theme')) _buildSettingsItem(icon: Icons.chat_bubble_outline, title: 'Chat Settings', subtitle: 'Theme', onTap: () => _showChatSettingsSheet(context)),
               if (_matchesSearch('Notifications', 'Message, group & call tones')) _buildSettingsItem(icon: Icons.notifications_none, title: 'Notifications', subtitle: 'Message, group & call tones', onTap: () => _showNotificationSettingsSheet(context)),
-              if (_matchesSearch('Help', 'FAQ, contact us, privacy policy')) _buildSettingsItem(icon: Icons.help_outline, title: 'Help', subtitle: 'FAQ, contact us, privacy policy', onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Help & Support')))),
+              if (_matchesSearch('Help', 'FAQ, contact us, privacy policy')) _buildSettingsItem(icon: Icons.help_outline, title: 'Help', subtitle: 'FAQ, contact us, privacy policy', onTap: () => _showTermsDialog(context)),
               if (_matchesSearch('Language Settings', _getLanguageName(_language))) _buildSettingsItem(icon: Icons.language, title: 'Language Settings', subtitle: 'Current: ${_getLanguageName(_language)}', onTap: () => _showLanguageSelectionSheet(context)),
             ],
           ),
@@ -734,6 +734,53 @@ class _SettingsScreenState extends State<SettingsScreen> with AutomaticKeepAlive
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTermsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Terms & Privacy Policy', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Terms of Use', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text('In General\nUTELO (Universal Translation & Easy Language Output), is a product owned by LINKUP COMMUNICATION PVT LTD. This document governs your relationship with UTELO. Access to and use of this UTELO and its services available through Google Play store (collectively, the "Services") are subject to the following terms, conditions and notices (the "Terms of Service"). By using the Services, you are agreeing to all the Terms of Service, as may be updated by us from time to time.\n\nAccess to UTELO is permitted on a temporary basis, and we reserve the right to withdraw or amend the Services without notice. We will not be liable if for any reason this UTELO is unavailable at any time or for any period.', style: GoogleFonts.poppins(fontSize: 12)),
+              const SizedBox(height: 12),
+              Text('Privacy Policy', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text('Our privacy policy, which sets out how we will use your information, can be found below. By using this UTELO, you consent to the processing described therein and warrant that all data provided by you is accurate.', style: GoogleFonts.poppins(fontSize: 12)),
+              const SizedBox(height: 12),
+              Text('Prohibitions', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text('You must not misuse UTELO You will not: commit or encourage a criminal offense; transmit or distribute a virus, trojan, worm, logic bomb or any other material which is malicious, technologically harmful, in breach of confidence or in any way offensive or obscene; hack into any aspect of the Service; corrupt data; cause annoyance to other users; infringe upon the rights of any other person\'s proprietary rights; send any unsolicited advertising or promotional material, commonly referred to as "spam".', style: GoogleFonts.poppins(fontSize: 12)),
+              const SizedBox(height: 12),
+              Text('Intellectual Property', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text('The intellectual property rights in all software and content remains the property of LINKUP COMMUNICATION PVT LTD or its licensors and are protected by copyright laws.', style: GoogleFonts.poppins(fontSize: 12)),
+              const SizedBox(height: 12),
+              Text('Disclaimer of Liability', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text('The material displayed on UTELO is provided without any guarantees, conditions or warranties as to its accuracy. LINKUP COMMUNICATION PVT LTD expressly excludes all conditions, warranties and other terms which might otherwise be implied by statute, common law or the law of equity.', style: GoogleFonts.poppins(fontSize: 12)),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 16),
+              Text('Privacy Policy (Detailed)', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text('Privacy Policy governs the way UTELO collects, uses, maintains and discloses information collected from users. This privacy policy applies to the UTELO, and its services offered by LINKUP COMMUNICATION PVT LTD.\n\nUTELO may collect personal identification information from Users in a variety of ways, including, but not limited to, when Users visit our UTELO, register on the UTELO. Users may be asked for, as appropriate, name, email address, phone number. We will collect personal identification information from Users only if they voluntarily submit such information to us.\n\nUTELO may collect and use Users personal information to improve customer service, improve our UTELO, run features, and send periodic emails.\n\nUTELO adopts appropriate data collection, storage and processing practices and security measures to protect again, transaction information and data stored on our UTELO. Sensitive and private data exchange happens over an SSL secured communication channel.', style: GoogleFonts.poppins(fontSize: 12)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close', style: GoogleFonts.poppins(color: Colors.black)),
           ),
         ],
       ),
