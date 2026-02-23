@@ -452,6 +452,10 @@ class PhoneInputWithCountryCodeState extends State<PhoneInputWithCountryCode> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
     return Row(
       children: [
         Container(
@@ -464,12 +468,13 @@ class PhoneInputWithCountryCodeState extends State<PhoneInputWithCountryCode> {
             child: DropdownButton<String>(
               value: _selectedCode,
               isDense: true,
+              dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
               items: PhoneInputWithCountryCode.countryCodes.map((country) {
                 return DropdownMenuItem<String>(
                   value: country['code'],
                   child: Text(
                     '${country['flag']} ${country['code']}',
-                    style: GoogleFonts.poppins(fontSize: 14),
+                    style: GoogleFonts.poppins(fontSize: 14, color: textColor),
                   ),
                 );
               }).toList(),
@@ -490,11 +495,14 @@ class PhoneInputWithCountryCodeState extends State<PhoneInputWithCountryCode> {
           child: TextField(
             controller: widget.phoneController,
             keyboardType: TextInputType.phone,
+            style: GoogleFonts.poppins(color: textColor, fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Phone Number',
+              hintStyle: GoogleFonts.poppins(color: hintColor, fontSize: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             ),
             onChanged: (value) {
               widget.onFullNumberChanged('$_selectedCode $value');
