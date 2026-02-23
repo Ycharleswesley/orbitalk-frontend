@@ -35,6 +35,20 @@ class ChatsScreenState extends State<ChatsScreen> with AutomaticKeepAliveClientM
   @override
   bool get wantKeepAlive => true; // Keep state alive
 
+  bool _isUserOnline(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final isOnline = data['isOnline'] == true;
+    if (!isOnline) return false;
+    
+    final lastSeen = data['lastSeen'] as Timestamp?;
+    if (lastSeen == null) return false;
+
+    // Use a 5-minute timeout window
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen.toDate());
+    return difference.inMinutes < 5;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -287,7 +301,7 @@ class ChatsScreenState extends State<ChatsScreen> with AutomaticKeepAliveClientM
                       });
 
                       return ListView.builder(
-                        padding: const EdgeInsets.only(top: 240, bottom: 120), // Adjusted top padding
+                        padding: const EdgeInsets.only(top: 210, bottom: 120), // Adjusted top padding
                         itemCount: chatRooms.length,
                         itemBuilder: (context, index) {
                            final chatRoom = chatRooms[index];
@@ -295,6 +309,17 @@ class ChatsScreenState extends State<ChatsScreen> with AutomaticKeepAliveClientM
                            final participants = List<String>.from(chatData['participants'] ?? []);
                            final contactId = participants.firstWhere((id) => id != _currentUserId, orElse: () => '');
                            if (contactId.isEmpty) return const SizedBox.shrink();
+
+                           // Mark unread incoming messages as Delivered in the background
+                           if (chatData['lastMessageSenderId'] == contactId) {
+                             WidgetsBinding.instance.addPostFrameCallback((_) {
+                               if (!mounted) return;
+                               // We do a lightweight trick: we'll call markAllAsDelivered
+                               // We need to add this method or just use the existing one if applicable.
+                               // Let's call a new method `markRoomMessagesAsDelivered`
+                               _chatService.markRoomMessagesAsDelivered(chatRoom.id, contactId);
+                             });
+                           }
 
                             return StreamBuilder<DocumentSnapshot>(
                               stream: UserService().getUserStream(contactId),
@@ -324,7 +349,9 @@ class ChatsScreenState extends State<ChatsScreen> with AutomaticKeepAliveClientM
                                     name: contactName,
                                     profilePicture: contactAvatar,
                                     size: 50,
-                                    isOnline: (userSnapshot.data!.data() as Map<String, dynamic>?)?['isOnline'] ?? false,
+                                    isOnline: userSnapshot.hasData && userSnapshot.data?.data() != null
+                                        ? _isUserOnline(userSnapshot.data!.data() as Map<String, dynamic>?)
+                                        : false,
                                     onTap: () {
                                       Navigator.push(context, MaterialPageRoute(
                                         builder: (context) => ProfileViewScreen(userId: contactId),
@@ -371,43 +398,33 @@ class ChatsScreenState extends State<ChatsScreen> with AutomaticKeepAliveClientM
             top: 0, left: 0, right: 0,
             child: CurvedHeader(
             showBack: false,
-            titleWidget: SizedBox(
-              height: 32,
-              child: Row(
-                children: [
-                  Image.asset(
-                    'assets/orbitalkLogo.png',
-                    width: 32,
-                    height: 32,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'UTELO',
-                    style: GoogleFonts.poppins(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  if (_currentUserId != null)
-                   Padding(
-                     padding: const EdgeInsets.only(left: 8, top: 4),
-                     child: Text(
-                      'ID: ...${_currentUserId!.substring(_currentUserId!.length - 4)}',
-                      style: GoogleFonts.poppins(fontSize: 10, color: Colors.white70),
-                     ),
-                   ),
-                ],
+            titleWidget: Text(
+              'Messages',
+              style: GoogleFonts.poppins(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
               ),
             ),
-            actions: [],
-            bottomChild: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
+            actions: [
+              GestureDetector(
+                onTap: () {
+                  Navigator.pushNamed(context, '/subscription');
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Image.asset(
+                    'assets/images/crown_icon.png',
+                    width: 28, // Adjust size as needed
+                    height: 28,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ],
+            bottomChild: Container(
                   height: 40,
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: 0, top: 0),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -437,20 +454,6 @@ class ChatsScreenState extends State<ChatsScreen> with AutomaticKeepAliveClientM
                     ),
                   ),
                 ),
-                // MESSAGES TITLE INSIDE HEADER
-                Padding(
-                   padding: const EdgeInsets.only(top: 4, bottom: 2, left: 4),
-                   child: Text(
-                      'Messages',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                   ),
-                 ),
-              ],
-            ),
           ),
           ),
         ],

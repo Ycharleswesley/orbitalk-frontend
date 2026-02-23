@@ -65,6 +65,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
   String? _contactLanguage;
   String? _nickname;
   bool _isSending = false; // Prevent double sends
+
+  bool _isUserOnline(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final isOnline = data['isOnline'] == true;
+    if (!isOnline) return false;
+    
+    final lastSeen = data['lastSeen'] as Timestamp?;
+    if (lastSeen == null) return false;
+
+    // Use a 5-minute timeout window
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen.toDate());
+    return difference.inMinutes < 5;
+  }
   
   @override
   bool get wantKeepAlive => true;
@@ -73,7 +87,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
   void initState() {
     super.initState();
     _initializeChat();
-    _loadContactData();
     
     // Listen to text changes without causing full rebuild
     _messageController.addListener(_onTextChanged);
@@ -812,40 +825,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
                 _pickDocument();
               },
             ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.photo_camera, color: Colors.blue.shade700),
-              ),
-              title: Text(
-                'Camera',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _showCameraOptions();
-              },
-            ),
+            /* CAMERA OPTION REMOVED - MOVED TO INPUT BAR */
           ],
         ),
       ),
     );
   }
 
-  void _loadContactData() {
-    _firestore.collection('users').doc(widget.contactId).snapshots().listen((snapshot) {
-      if (snapshot.exists && mounted) {
-        setState(() {
-          _contactData = snapshot.data();
-          _contactLanguage = _contactData?['language'] ?? _contactData?['preferredLanguage'] ?? 'en';
-        });
-      }
-    });
-  }
+  // Removed _loadContactData as it caused full page rebuilds on status change
 
   Future<void> _initializeChat() async {
     // Prevent re-initialization if already initialized
@@ -1016,6 +1003,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
 
   @override
   void dispose() {
+    // Clear active chat room to resume notifications
+    NotificationService().setCurrentChatRoomId(null);
+    
     _messageController.dispose();
     _scrollController.dispose();
     _hasTextNotifier.dispose();
@@ -1119,66 +1109,84 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        title: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ProfileViewScreen(
-                  userId: widget.contactId,
-                  contactName: _nickname ?? widget.contactName,
-                  contactAvatar: widget.contactAvatar,
-                ),
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(widget.contactId).snapshots(),
+          builder: (context, snapshot) {
+            Map<String, dynamic>? contactData;
+            if (snapshot.hasData && snapshot.data!.exists) {
+              contactData = snapshot.data!.data() as Map<String, dynamic>;
+              
+              // Only update contact language internally if it changes
+              final lang = contactData['language'] ?? contactData['preferredLanguage'] ?? 'en';
+              if (_contactLanguage != lang) {
+                 _contactLanguage = lang;
+                 // Note: we don't setState here to avoid rebuilds, but the variable is updated for future messages
+              }
+            }
+
+            return InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileViewScreen(
+                      userId: widget.contactId,
+                      contactName: _nickname ?? widget.contactName,
+                      contactAvatar: widget.contactAvatar,
+                    ),
+                  ),
+                );
+              },
+              child: Row(
+                children: [
+                  UserAvatar(
+                    name: _nickname ?? widget.contactName,
+                    profilePicture: widget.contactAvatar,
+                    size: 40,
+                    colorId: contactData != null ? contactData['profileColor'] : null,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProfileViewScreen(
+                            userId: widget.contactId,
+                            contactName: _nickname ?? widget.contactName,
+                            contactAvatar: widget.contactAvatar,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _nickname ?? widget.contactName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (contactData != null)
+                          Text(
+                            _isUserOnline(contactData) ? 'Online' : 'Offline',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: _isUserOnline(contactData) ? const Color(0xFF00C853) : Colors.white70,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             );
-          },
-          child: Row(
-            children: [
-              UserAvatar(
-                name: _nickname ?? widget.contactName,
-                profilePicture: widget.contactAvatar,
-                size: 40,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfileViewScreen(
-                        userId: widget.contactId,
-                        contactName: _nickname ?? widget.contactName,
-                        contactAvatar: widget.contactAvatar,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _nickname ?? widget.contactName,
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (_contactData != null)
-                      Text(
-                        _contactData!['isOnline'] == true ? 'Online' : 'Offline',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: _contactData!['isOnline'] == true ? const Color(0xFF00C853) : Colors.white,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          }
         ),
         actions: [
           IconButton(
@@ -1268,6 +1276,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
                               }
 
                               final messages = snapshot.data!.docs;
+                              
+                              // Check for unread messages and mark them as read
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) return;
+                                for (var doc in messages) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  if (data['senderId'] != _currentUserId && data['isRead'] != true) {
+                                    // Extract messageId correctly
+                                    final msgId = data['messageId'] ?? doc.id;
+                                    _chatService.markMessageAsRead(_chatRoomId!, msgId);
+                                  }
+                                }
+                              });
 
                               return ListView.builder(
                                 controller: _scrollController,
@@ -1305,6 +1326,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with AutomaticKeepA
                 onSendMessage: _sendMessage,
                 onShowAttachmentOptions: _showAttachmentOptions,
                 onEmojiSelected: _onEmojiSelected,
+                onCameraPressed: _showCameraOptions,
               ),
             ],
           ),
@@ -2111,6 +2133,8 @@ class ChatInputArea extends StatelessWidget {
   final VoidCallback onShowAttachmentOptions;
   final Function(emoji.Emoji) onEmojiSelected;
 
+  final VoidCallback onCameraPressed;
+
   const ChatInputArea({
     Key? key,
     required this.messageController,
@@ -2120,6 +2144,7 @@ class ChatInputArea extends StatelessWidget {
     required this.onSendMessage,
     required this.onShowAttachmentOptions,
     required this.onEmojiSelected,
+    required this.onCameraPressed,
   }) : super(key: key);
 
   @override
@@ -2183,6 +2208,10 @@ class ChatInputArea extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.attach_file, color: Colors.grey),
                   onPressed: onShowAttachmentOptions,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.camera_alt, color: Colors.grey),
+                  onPressed: onCameraPressed,
                 ),
                 const SizedBox(width: 4),
                 Container(

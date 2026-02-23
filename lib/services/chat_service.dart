@@ -364,6 +364,35 @@ class ChatService {
     }
   }
 
+  // Mark all unread incoming messages in a room as Delivered
+  Future<void> markRoomMessagesAsDelivered(String chatRoomId, String senderId) async {
+    try {
+      final messagesRef = _firestore
+          .collection('chatRooms')
+          .doc(chatRoomId)
+          .collection('messages');
+
+      final querySnapshot = await messagesRef
+          .where('senderId', isEqualTo: senderId)
+          .where('isDelivered', isEqualTo: false)
+          .get();
+
+      final batch = _firestore.batch();
+      for (var doc in querySnapshot.docs) {
+        batch.update(doc.reference, {
+          'isDelivered': true,
+          'deliveredAt': FieldValue.serverTimestamp(),
+        });
+      }
+      
+      if (querySnapshot.docs.isNotEmpty) {
+         await batch.commit();
+      }
+    } catch (e) {
+      debugPrint('Error marking room messages as delivered: $e');
+    }
+  }
+
   // Delete Message (For Everyone - Hard Delete)
   Future<void> deleteMessage(String chatRoomId, String messageDocId) async {
     try {
